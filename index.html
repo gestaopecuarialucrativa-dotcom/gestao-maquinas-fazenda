@@ -384,7 +384,7 @@ header{background:linear-gradient(135deg,#0D3318,#1A4C2A);height:64px;display:fl
 <div class="toast" id="toast"></div>
 
 <script>
-const API = 'https://script.google.com/macros/s/AKfycby0rhoSLfEpYQM56nn9xiW0GQNlxdu_JUPvvI5WI6k8jaRqtyZLzwE35JfrY7OyxCy_RA/exec';
+const API = 'https://script.google.com/macros/s/AKfycbynSlLSc5E_sh5lh21MkWN6lxgU7gFdj-XDhtch8TL5ECv2TopgZ8LL-Qc5HzRZr34f9g/exec';
 let fazendas=[], fazAt=null, resumo=null, gaugeCharts=[], barChart1=null, barChart2=null;
 
 const TALHAO_COLORS=['#2E7D32','#1565C0','#6A1B9A','#BF360C','#00695C'];
@@ -711,7 +711,8 @@ async function salvarFazenda(){
     Telefone:document.getElementById('f-tel').value,
     Municipio:document.getElementById('f-mun').value,
     Hectares_Total:document.getElementById('f-ha').value});
-  if(r.ok||r.erro==='offline'){
+  console.log('Resposta API fazenda:', r);
+  if(r.ok){
     showToast(id?'✅ Fazenda atualizada!':'✅ Fazenda cadastrada!');
     closeModal('modal-faz');
     if(id){
@@ -720,7 +721,12 @@ async function salvarFazenda(){
       if(fazAt&&fazAt.ID===id){fazAt.Nome_Fazenda=nome;fazAt.Pecuarista=pec;document.getElementById('hdr-faz').textContent=nome;}
     }
     await loadFazendas();renderFazendasPg();
-  } else showToast('❌ Erro: '+r.erro);
+  } else if(r.erro==='offline'){
+    showToast('⚠️ Sem conexão com a API — verifique o Apps Script');
+  } else {
+    showToast('❌ Erro: '+(r.erro||JSON.stringify(r)));
+    console.error('Erro API:', r);
+  }
 }
 
 function editFazModal(id){
@@ -786,10 +792,17 @@ async function salvarLanc(){
     Valor_Hora:document.getElementById('l-vh').value,
     Tarefa:document.getElementById('l-tarefa').value,
     Observacoes:document.getElementById('l-obs').value});
-  if(r.ok||r.erro==='offline'){
+  console.log('Resposta API lançamento:', r);
+  if(r.ok){
     showToast(editId?'✅ Atualizado! '+fmtN(r.horas,1)+'h | '+fmtR(r.custo):'✅ Lançamento salvo!');
     closeModal('modal-lanc');destroyCharts();await loadResumo();
-  } else showToast('❌ '+r.erro);
+  } else if(r.erro==='offline'){
+    showToast('⚠️ Sem conexão com a API');
+    console.error('Offline - sem resposta da API');
+  } else {
+    showToast('❌ '+(r.erro||JSON.stringify(r)));
+    console.error('Erro API lançamento:', r);
+  }
   btn.textContent='✅ Salvar';btn.disabled=false;
 }
 
