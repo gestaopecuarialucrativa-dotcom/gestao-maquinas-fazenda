@@ -228,6 +228,18 @@ header{background:linear-gradient(135deg,#0D3318,#1A4C2A);height:64px;display:fl
 .btn-link-reati{background:#E8F5E9;color:#2E7D32;border:1.5px solid var(--vc);border-radius:8px;padding:7px 14px;font-size:12px;font-weight:500;cursor:pointer;font-family:'Roboto',sans-serif}
 .nova-link-form{background:#fff;border-radius:12px;border:1px solid var(--cb);padding:1.4rem;margin-bottom:1.2rem;box-shadow:var(--shadow)}
 .nova-link-title{font-size:14px;font-weight:700;color:var(--vd);margin-bottom:1rem;display:flex;align-items:center;gap:8px}
+.pago-badge{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700}
+.pago-sim{background:#E8F5E9;color:#2E7D32}
+.pago-nao{background:#FFF8E1;color:#E65100}
+.btn-pagar{background:#E8F5E9;color:#2E7D32;border:1.5px solid var(--vc);border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Roboto',sans-serif}
+.btn-pagar:hover{background:var(--vc)}
+.btn-despagar{background:#FFF8E1;color:#E65100;border:1.5px solid #FFE082;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Roboto',sans-serif}
+.trat-card{background:#fff;border-radius:12px;border:1px solid var(--cb);box-shadow:var(--shadow);margin-bottom:.9rem;overflow:hidden}
+.trat-head{background:var(--vd);color:#fff;padding:11px 15px;font-size:13px;font-weight:500;display:flex;align-items:center;justify-content:space-between}
+.trat-body{padding:1rem 15px;display:grid;grid-template-columns:1fr 1fr;gap:.5rem}
+.trat-field{font-size:12.5px;color:var(--ts)}.trat-field strong{color:var(--tx);font-weight:500}
+.trat-status-ativo{background:#E8F5E9;color:#2E7D32;font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px}
+.trat-status-inativo{background:#FFEBEE;color:#C62828;font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px}
 .toast{position:fixed;bottom:1.8rem;right:1.8rem;background:var(--vd);color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.2);transform:translateY(100px);opacity:0;transition:all .3s;z-index:999;max-width:280px;font-family:'Roboto',sans-serif}
 .toast.show{transform:translateY(0);opacity:1}
 
@@ -272,6 +284,7 @@ header{background:linear-gradient(135deg,#0D3318,#1A4C2A);height:64px;display:fl
   <div class="nav" onclick="goPage('fechamento',this)"><span class="nav-ico">🚜</span>Fechamento Trator</div>
   <div class="nav" onclick="goPage('mensagens',this)"><span class="nav-ico">💬</span>Mensagens</div>
   <div class="nav" onclick="goPage('fazendas',this)"><span class="nav-ico">🌾</span>Fazendas</div>
+  <div class="nav" onclick="goPage('tratores',this)"><span class="nav-ico">🚜</span>Tratores</div>
   <div class="nav" onclick="goPage('links',this)"><span class="nav-ico">🔗</span>Links Tratorista</div>
   <div class="s-lbl" style="margin-top:.8rem">Minhas Fazendas</div>
   <div class="faz-list" id="sb-fazendas"><div class="loading"><div class="spinner"></div>Carregando...</div></div>
@@ -319,6 +332,14 @@ header{background:linear-gradient(135deg,#0D3318,#1A4C2A);height:64px;display:fl
 <div class="page" id="page-mensagens">
   <div class="ph"><div><div class="ph-title">Mensagens WhatsApp</div><div class="ph-sub">Prontas para copiar e enviar</div></div></div>
   <div id="msg-content"><div class="empty"><div class="empty-ico">💬</div><div class="empty-title">Selecione uma fazenda</div></div></div>
+</div>
+
+<div class="page" id="page-tratores">
+  <div class="ph">
+    <div><div class="ph-title">Tratores Cadastrados</div><div class="ph-sub">Gerencie tratores, donos, operadores e PIX</div></div>
+    <button class="btn btn-prim" id="btn-novo-trat" onclick="abrirModalTrator(null)">+ Novo Trator</button>
+  </div>
+  <div id="tratores-pg"><div class="empty"><div class="empty-ico">🚜</div><div class="empty-title">Selecione uma fazenda primeiro</div></div></div>
 </div>
 
 <div class="page" id="page-links">
@@ -385,6 +406,40 @@ header{background:linear-gradient(135deg,#0D3318,#1A4C2A);height:64px;display:fl
   </div>
 </div>
 
+<!-- MODAL TRATOR -->
+<div class="overlay" id="modal-trator">
+  <div class="modal">
+    <div class="modal-title"><span id="mtrat-title">🚜 Novo Trator</span><button class="modal-close" onclick="closeModal('modal-trator')">✕</button></div>
+    <input type="hidden" id="tr-id">
+    <div class="form-grid">
+      <div class="fg full"><label>Nome do Trator *</label><input id="tr-nome" placeholder="Ex: Trator Azul / Massey 275"></div>
+      <div class="fg"><label>Dono do Trator *</label><input id="tr-dono" placeholder="Nome do proprietário"></div>
+      <div class="fg"><label>Operador <span class="opt">(opcional)</span></label><input id="tr-operador" placeholder="Nome do tratorista"></div>
+      <div class="fg"><label>Valor da Hora (R$) *</label><input id="tr-vh" type="number" step="0.01" placeholder="Ex: 180.00"></div>
+      <div class="fg"><label>Chave PIX *</label><input id="tr-pix" placeholder="CPF, telefone ou e-mail"></div>
+      <div class="fg"><label>Tipo do PIX</label>
+        <select id="tr-pix-tipo">
+          <option value="CPF">CPF</option>
+          <option value="Telefone">Telefone</option>
+          <option value="E-mail">E-mail</option>
+          <option value="CNPJ">CNPJ</option>
+          <option value="Aleatória">Chave Aleatória</option>
+        </select>
+      </div>
+      <div class="fg"><label>Status</label>
+        <select id="tr-status">
+          <option value="Ativo">Ativo</option>
+          <option value="Inativo">Inativo</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-sec" onclick="closeModal('modal-trator')">Cancelar</button>
+      <button class="btn btn-prim" onclick="salvarTrator()">✅ Salvar Trator</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL GERAR LINK TRATORISTA -->
 <div class="overlay" id="modal-link">
   <div class="modal">
@@ -395,8 +450,14 @@ header{background:linear-gradient(135deg,#0D3318,#1A4C2A);height:64px;display:fl
     </div>
     <div class="form-grid">
       <div class="fg full"><label>Nome do Tratorista <span class="opt">(opcional)</span></label><input id="ml-tratorista" placeholder="Ex: João Silva"></div>
-      <div class="fg"><label>Valor da Hora (R$) *</label><input id="ml-vh" type="number" step="0.01" placeholder="Ex: 180.00"></div>
-      <div class="fg"><label>Trator *</label><input id="ml-trator" placeholder="Ex: Trator Azul"></div>
+      <div class="fg full"><label>Trator *</label>
+        <select id="ml-trator-sel" onchange="selecionarTratorLink()">
+          <option value="">— Selecionar trator cadastrado —</option>
+        </select>
+        <div style="font-size:11px;color:var(--ts);margin-top:4px">Ou <span style="color:var(--vm);cursor:pointer;font-weight:700" onclick="abrirModalTrator(null)">+ cadastrar novo trator</span></div>
+      </div>
+      <div class="fg"><label>Valor da Hora (R$) *</label><input id="ml-vh" type="number" step="0.01" placeholder="Preenchido ao selecionar trator"></div>
+      <div class="fg"><label>Trator (nome)</label><input id="ml-trator" placeholder="Preenchido automaticamente" readonly style="background:#f5f5f5"></div>
       <div class="fg full"><label>Observação <span class="opt">(opcional)</span></label><input id="ml-obs" placeholder="Ex: Contrato maio/2026"></div>
     </div>
     <div id="link-gerado" style="display:none;margin-top:1rem">
@@ -485,6 +546,7 @@ function goPage(id,el){
   if(el)el.classList.add('active');
   if(id==='desempenho'&&fazAt)buildDesemp();
   if(id==='fazendas')renderFazendasPg();
+  if(id==='tratores'){carregarTratores();}
   if(id==='links')renderLinksPage();
 }
 function openModal(id){document.getElementById(id).classList.add('open');}
@@ -542,6 +604,7 @@ async function loadResumo(){
   resumo=(r.ok&&r.data)?r.data:DEMO_RESUMO;
   renderDash();renderLanc();renderFecha();renderMsgs();
   if(document.getElementById('page-desempenho').classList.contains('active'))buildDesemp();
+  await carregarTratores();
 }
 
 // FORMAT
@@ -591,7 +654,9 @@ function renderDash(){
     '<div class="kpi"><div class="kpi-ico">🌿</div><div class="kpi-lbl">Área Trabalhada</div><div class="kpi-val">'+fmtN(d.totalArea)+' ha</div><div class="kpi-sub">Hectares no período</div></div>'+
     '<div class="kpi"><div class="kpi-ico">⏱</div><div class="kpi-lbl">Total de Horas</div><div class="kpi-val">'+fmtN(d.totalHoras,1)+' h</div><div class="kpi-sub">Horas registradas</div></div>'+
     '<div class="kpi"><div class="kpi-ico">📐</div><div class="kpi-lbl">Performance</div><div class="kpi-val">'+fmtN(d.perfMedia)+' h/ha</div><div class="kpi-sub">Eficiência média</div></div>'+
-    '<div class="kpi" style="--vm:#E65100;--vv:#F57F17"><div class="kpi-ico">🚜</div><div class="kpi-lbl">Custo por Hectare</div><div class="kpi-val">'+fmtR(cph)+'</div><div class="kpi-sub">Média geral</div></div>';
+    '<div class="kpi" style="--vm:#E65100;--vv:#F57F17"><div class="kpi-ico">🚜</div><div class="kpi-lbl">Custo por Hectare</div><div class="kpi-val">'+fmtR(cph)+'</div><div class="kpi-sub">Média geral</div></div>'+
+    '<div class="kpi" style="--vm:#2E7D32;--vv:#43A047"><div class="kpi-ico">✅</div><div class="kpi-lbl">Total Pago</div><div class="kpi-val">'+fmtR(d.totalPago||0)+'</div><div class="kpi-sub">Serviços pagos</div></div>'+
+    '<div class="kpi" style="--vm:#E65100;--vv:#F57F17"><div class="kpi-ico">⏳</div><div class="kpi-lbl">A Pagar</div><div class="kpi-val">'+fmtR(d.totalPendente||0)+'</div><div class="kpi-sub">Serviços pendentes</div></div>';
   var rows='';
   (d.lancamentos||[]).forEach(function(l){
     rows+='<tr><td>'+formatDate(l.Data)+'</td><td><strong>'+l.Talhao_Area+'</strong></td><td><span class="badge">'+l.Trator+'</span></td><td>'+(parseFloat(l.Area_ha||0)||'—')+'</td><td><strong>'+fmtN(l.Horas_Trabalhadas,1)+'h</strong></td><td class="money">'+fmtR(l.Custo_Total)+'</td><td style="max-width:160px;white-space:normal;font-size:12px;color:var(--ts)">'+( l.Observacoes||'—')+'</td></tr>';
@@ -603,13 +668,22 @@ function renderDash(){
 function renderLanc(){
   var rows='';
   (resumo&&resumo.lancamentos||[]).forEach(function(l){
-    rows+='<tr><td>'+formatDate(l.Data)+'</td><td>'+(l.Tratorista||'—')+'</td><td><span class="badge">'+l.Trator+'</span></td><td>'+l.Talhao_Area+'</td><td>'+(parseFloat(l.Area_ha||0)||'—')+'</td><td>'+fmtN(l.Horimetro_Inicial,1)+'</td><td>'+fmtN(l.Horimetro_Final,1)+'</td><td><strong>'+fmtN(l.Horas_Trabalhadas,1)+'h</strong></td><td class="money">'+fmtR(l.Custo_Total)+'</td><td><button class="btn btn-edit" id="edit-'+l.ID+'">✏️ Editar</button></td></tr>';
+    var pago = String(l.Status_Pagamento||'Pendente')==='Pago';
+    var statusBadge = pago ? '<span class="pago-badge pago-sim">✅ Pago</span>' : '<span class="pago-badge pago-nao">⏳ Pendente</span>';
+    var pagarBtn = pago
+      ? '<button class="btn-despagar" id="dpagar-'+l.ID+'">↩ Desfazer</button>'
+      : '<button class="btn-pagar" id="pagar-'+l.ID+'">💰 Marcar Pago</button>';
+    rows+='<tr><td>'+formatDate(l.Data)+'</td><td>'+(l.Tratorista||'—')+'</td><td><span class="badge">'+l.Trator+'</span></td><td>'+l.Talhao_Area+'</td><td>'+(parseFloat(l.Area_ha||0)||'—')+'</td><td>'+fmtN(l.Horimetro_Inicial,1)+'</td><td>'+fmtN(l.Horimetro_Final,1)+'</td><td><strong>'+fmtN(l.Horas_Trabalhadas,1)+'h</strong></td><td class="money">'+fmtR(l.Custo_Total)+'</td><td>'+statusBadge+'<br>'+pagarBtn+'</td><td><button class="btn btn-edit" id="edit-'+l.ID+'">✏️ Editar</button></td></tr>';
   });
-  document.getElementById('lanc-table').innerHTML='<div class="card"><div class="card-head">Lançamentos — '+(fazAt?fazAt.Nome_Fazenda:'')+'</div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Data</th><th>Tratorista</th><th>Trator</th><th>Talhão</th><th>Área</th><th>Hor.Ini</th><th>Hor.Fin</th><th>Horas</th><th>Custo</th><th>Ação</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+  document.getElementById('lanc-table').innerHTML='<div class="card"><div class="card-head">Lançamentos — '+(fazAt?fazAt.Nome_Fazenda:'')+'</div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Data</th><th>Tratorista</th><th>Trator</th><th>Talhão</th><th>Área</th><th>Hor.Ini</th><th>Hor.Fin</th><th>Horas</th><th>Custo</th><th>Status</th><th>Ação</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
   // Attach edit listeners safely
   (resumo&&resumo.lancamentos||[]).forEach(function(l){
-    var btn=document.getElementById('edit-'+l.ID);
-    if(btn)btn.onclick=function(){openLancModal(l.ID);};
+    var btnE=document.getElementById('edit-'+l.ID);
+    if(btnE)btnE.onclick=(function(lid){return function(){openLancModal(lid);};})(l.ID);
+    var btnP=document.getElementById('pagar-'+l.ID);
+    if(btnP)btnP.onclick=(function(lid){return function(){marcarPago(lid);};})(l.ID);
+    var btnD=document.getElementById('dpagar-'+l.ID);
+    if(btnD)btnD.onclick=(function(lid){return function(){marcarPendente(lid);};})(l.ID);
   });
 }
 
@@ -1218,6 +1292,161 @@ async function encerrarLink(token) {
   var r = await apiPost({action:'encerrarLink', token:token});
   showToast(r.ok ? '🔒 Link encerrado' : '❌ '+r.erro);
   if (r.ok) renderLinksPage();
+}
+
+// ═══════════════════════════════════════
+// TRATORES
+// ═══════════════════════════════════════
+var tratoresCache = [];
+
+async function carregarTratores() {
+  if (!fazAt) return;
+  var r = await apiGet({action:'getTratores', fazenda_id: fazAt.ID});
+  tratoresCache = (r.ok && r.data) ? r.data : [];
+  renderTratoresPage();
+  preencherSelectTrator();
+}
+
+function preencherSelectTrator() {
+  var sel = document.getElementById('ml-trator-sel');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— Selecionar trator cadastrado —</option>';
+  var ativos = tratoresCache.filter(function(t){ return String(t.Status) === 'Ativo'; });
+  ativos.forEach(function(t) {
+    var opt = document.createElement('option');
+    opt.value = t.ID;
+    opt.textContent = t.Nome_Trator + ' — ' + t.Dono + ' (R$ ' + parseFloat(t.Valor_Hora||0).toFixed(2) + '/h)';
+    opt.dataset.nome = t.Nome_Trator;
+    opt.dataset.vh   = t.Valor_Hora;
+    opt.dataset.pix  = t.PIX_Chave;
+    sel.appendChild(opt);
+  });
+}
+
+function selecionarTratorLink() {
+  var sel = document.getElementById('ml-trator-sel');
+  var opt = sel.options[sel.selectedIndex];
+  if (!opt || !opt.value) return;
+  document.getElementById('ml-trator').value = opt.dataset.nome || '';
+  document.getElementById('ml-vh').value     = opt.dataset.vh   || '';
+  document.getElementById('ml-tratorista').value = '';
+}
+
+function renderTratoresPage() {
+  var el = document.getElementById('tratores-pg');
+  if (!el) return;
+  if (!fazAt) {
+    el.innerHTML = '<div class="empty"><div class="empty-ico">🚜</div><div class="empty-title">Selecione uma fazenda primeiro</div></div>';
+    return;
+  }
+  if (!tratoresCache.length) {
+    el.innerHTML = '<div class="empty"><div class="empty-ico">🚜</div><div class="empty-title">Nenhum trator cadastrado</div><p style="font-size:13px;color:var(--ts)">Clique em + Novo Trator para começar</p></div>';
+    return;
+  }
+  el.innerHTML = '';
+  tratoresCache.forEach(function(t) {
+    var card = document.createElement('div');
+    card.className = 'trat-card';
+    var statusCls = String(t.Status) === 'Ativo' ? 'trat-status-ativo' : 'trat-status-inativo';
+    var head = document.createElement('div');
+    head.className = 'trat-head';
+    head.innerHTML = '<span>🚜 ' + (t.Nome_Trator||'') + '</span><span class="' + statusCls + '">' + (t.Status||'Ativo') + '</span>';
+    card.appendChild(head);
+    var body = document.createElement('div');
+    body.className = 'trat-body';
+    body.innerHTML =
+      '<div class="trat-field"><strong>Dono:</strong> ' + (t.Dono||'—') + '</div>' +
+      '<div class="trat-field"><strong>Operador:</strong> ' + (t.Operador||'—') + '</div>' +
+      '<div class="trat-field"><strong>Valor/hora:</strong> R$ ' + parseFloat(t.Valor_Hora||0).toFixed(2) + '</div>' +
+      '<div class="trat-field"><strong>PIX (' + (t.PIX_Tipo||'—') + '):</strong> ' + (t.PIX_Chave||'—') + '</div>';
+    card.appendChild(body);
+    var footer = document.createElement('div');
+    footer.style.cssText = 'padding:8px 15px;border-top:1px solid var(--cb);display:flex;gap:6px';
+    var btnE = document.createElement('button');
+    btnE.className = 'btn btn-edit';
+    btnE.textContent = '✏️ Editar';
+    btnE.onclick = (function(trat){ return function(){ abrirModalTrator(trat); }; })(t);
+    footer.appendChild(btnE);
+    var btnL = document.createElement('button');
+    btnL.className = 'btn btn-sec';
+    btnL.style.cssText = 'padding:5px 10px;font-size:12px';
+    btnL.textContent = '🔗 Gerar Link';
+    btnL.onclick = (function(trat){ return function(){
+      abrirModalLink();
+      setTimeout(function(){
+        // pre-fill modal with this tractor
+        document.getElementById('ml-trator').value = trat.Nome_Trator||'';
+        document.getElementById('ml-vh').value = trat.Valor_Hora||'';
+        // select in dropdown
+        var sel = document.getElementById('ml-trator-sel');
+        for (var i=0; i<sel.options.length; i++) {
+          if (sel.options[i].value === trat.ID) { sel.selectedIndex = i; break; }
+        }
+      }, 100);
+    }; })(t);
+    footer.appendChild(btnL);
+    card.appendChild(footer);
+    el.appendChild(card);
+  });
+}
+
+function abrirModalTrator(trat) {
+  if (!fazAt) { showToast('⚠️ Selecione uma fazenda'); return; }
+  document.getElementById('tr-id').value        = trat ? trat.ID        : '';
+  document.getElementById('tr-nome').value      = trat ? trat.Nome_Trator||'' : '';
+  document.getElementById('tr-dono').value      = trat ? trat.Dono||''       : '';
+  document.getElementById('tr-operador').value  = trat ? trat.Operador||''   : '';
+  document.getElementById('tr-vh').value        = trat ? trat.Valor_Hora||'' : '';
+  document.getElementById('tr-pix').value       = trat ? trat.PIX_Chave||''  : '';
+  document.getElementById('tr-pix-tipo').value  = trat ? trat.PIX_Tipo||'CPF': 'CPF';
+  document.getElementById('tr-status').value    = trat ? trat.Status||'Ativo' : 'Ativo';
+  document.getElementById('mtrat-title').textContent = trat ? '✏️ Editar Trator' : '🚜 Novo Trator';
+  openModal('modal-trator');
+}
+
+async function salvarTrator() {
+  var nome = document.getElementById('tr-nome').value.trim();
+  var dono = document.getElementById('tr-dono').value.trim();
+  var vh   = document.getElementById('tr-vh').value;
+  if (!nome) { showToast('⚠️ Informe o nome do trator'); return; }
+  if (!dono) { showToast('⚠️ Informe o dono do trator'); return; }
+  if (!vh)   { showToast('⚠️ Informe o valor da hora'); return; }
+  var id = document.getElementById('tr-id').value;
+  var body = {
+    action:      id ? 'editTrator' : 'addTrator',
+    ID:          id,
+    Fazenda_ID:  fazAt.ID,
+    Nome_Fazenda:fazAt.Nome_Fazenda,
+    Nome_Trator: nome,
+    Dono:        dono,
+    Operador:    document.getElementById('tr-operador').value,
+    Valor_Hora:  vh,
+    PIX_Chave:   document.getElementById('tr-pix').value,
+    PIX_Tipo:    document.getElementById('tr-pix-tipo').value,
+    Status:      document.getElementById('tr-status').value
+  };
+  var r = await apiPost(body);
+  if (r.ok) {
+    showToast(id ? '✅ Trator atualizado!' : '✅ Trator cadastrado!');
+    closeModal('modal-trator');
+    await carregarTratores();
+  } else {
+    showToast('❌ Erro: ' + (r.erro||'Tente novamente'));
+  }
+}
+
+// ═══════════════════════════════════════
+// STATUS PAGAMENTO
+// ═══════════════════════════════════════
+async function marcarPago(id) {
+  var r = await apiPost({action:'marcarPago', id:id});
+  if (r.ok) { showToast('✅ Marcado como Pago!'); await loadResumo(); }
+  else showToast('❌ ' + (r.erro||'Erro'));
+}
+async function marcarPendente(id) {
+  var r = await apiPost({action:'marcarPendente', id:id});
+  if (r.ok) { showToast('↩ Marcado como Pendente'); await loadResumo(); }
+  else showToast('❌ ' + (r.erro||'Erro'));
 }
 
 function copiarLinkBtn(btn) { copiarLink(btn.dataset.url); }
