@@ -445,8 +445,7 @@ header{background:linear-gradient(135deg,#0D3318,#1A4C2A);height:64px;display:fl
   <div class="modal">
     <div class="modal-title"><span>🔗 Gerar Link do Tratorista</span><button class="modal-close" onclick="closeModal('modal-link')">✕</button></div>
     <div style="background:var(--mint);border-radius:10px;padding:12px 14px;margin-bottom:1.2rem;font-size:13px;color:var(--vd)">
-      <strong>Fazenda:</strong> <span id="ml-fazenda">—</span><br>
-      <strong>Trator:</strong> <span id="ml-trator-display">—</span>
+      <strong>Fazenda:</strong> <span id="ml-fazenda">—</span>
     </div>
     <div class="form-grid">
       <div class="fg full"><label>Nome do Tratorista <span class="opt">(opcional)</span></label><input id="ml-tratorista" placeholder="Ex: João Silva"></div>
@@ -458,6 +457,16 @@ header{background:linear-gradient(135deg,#0D3318,#1A4C2A);height:64px;display:fl
       </div>
       <div class="fg"><label>Valor da Hora (R$) *</label><input id="ml-vh" type="number" step="0.01" placeholder="Preenchido ao selecionar trator"></div>
       <div class="fg"><label>Trator (nome)</label><input id="ml-trator" placeholder="Preenchido automaticamente" readonly style="background:#f5f5f5"></div>
+      <div class="fg full">
+        <label>Talhões do link *</label>
+        <div style="font-size:11px;color:var(--ts);margin-bottom:6px">Adicione os talhões que o tratorista vai trabalhar neste link</div>
+        <div id="ml-talhoes-lista" style="margin-bottom:8px"></div>
+        <div style="display:flex;gap:6px;align-items:flex-end">
+          <div style="flex:2"><input id="ml-talhao-nome" placeholder="Nome do talhão (Ex: Pasto 6)" style="border:1.5px solid var(--cb);border-radius:8px;padding:9px 11px;font-size:14px;width:100%;font-family:Roboto,sans-serif;outline:none"></div>
+          <div style="flex:1"><input id="ml-talhao-area" type="number" step="0.01" placeholder="Área (ha)" style="border:1.5px solid var(--cb);border-radius:8px;padding:9px 11px;font-size:14px;width:100%;font-family:Roboto,sans-serif;outline:none"></div>
+          <button type="button" onclick="adicionarTalhaoLink()" style="background:var(--vm);color:#fff;border:none;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:Roboto,sans-serif">+ Add</button>
+        </div>
+      </div>
       <div class="fg full"><label>Observação <span class="opt">(opcional)</span></label><input id="ml-obs" placeholder="Ex: Contrato maio/2026"></div>
     </div>
     <div id="link-gerado" style="display:none;margin-top:1rem">
@@ -1131,12 +1140,48 @@ function abrirModalLink() {
   openModal('modal-link');
 }
 
+var mlTalhoes = []; // talhoes do link sendo criado
+
+function adicionarTalhaoLink() {
+  var nome = document.getElementById('ml-talhao-nome').value.trim();
+  var area = parseFloat(document.getElementById('ml-talhao-area').value) || 0;
+  if (!nome) { showToast('⚠️ Informe o nome do talhão'); return; }
+  mlTalhoes.push({nome:nome, area:area});
+  document.getElementById('ml-talhao-nome').value = '';
+  document.getElementById('ml-talhao-area').value = '';
+  renderTalhoesMini();
+}
+
+function removerTalhaoLink(i) {
+  mlTalhoes.splice(i, 1);
+  renderTalhoesMini();
+}
+
+function renderTalhoesMini() {
+  var el = document.getElementById('ml-talhoes-lista');
+  if (!mlTalhoes.length) { el.innerHTML = ''; return; }
+  el.innerHTML = '';
+  mlTalhoes.forEach(function(t, i) {
+    var div = document.createElement('div');
+    div.style.cssText = 'display:flex;align-items:center;justify-content:space-between;background:var(--mint);border-radius:8px;padding:7px 10px;margin-bottom:4px;font-size:13px';
+    div.innerHTML = '<span>🌿 <strong>' + t.nome + '</strong>' + (t.area > 0 ? ' — ' + t.area + ' ha' : '') + '</span>';
+    var rm = document.createElement('button');
+    rm.type = 'button';
+    rm.textContent = '✕';
+    rm.style.cssText = 'background:none;border:none;color:var(--red);cursor:pointer;font-size:14px;font-weight:700;padding:0 4px';
+    rm.onclick = (function(idx){ return function(){ removerTalhaoLink(idx); }; })(i);
+    div.appendChild(rm);
+    el.appendChild(div);
+  });
+}
+
 async function gerarLink() {
   if (!fazAt) return;
   var trator = document.getElementById('ml-trator').value.trim();
   var vh     = parseFloat(document.getElementById('ml-vh').value) || 0;
-  if (!trator) { showToast('⚠️ Informe o nome do trator'); return; }
+  if (!trator) { showToast('⚠️ Selecione ou informe o trator'); return; }
   if (!vh)     { showToast('⚠️ Informe o valor da hora'); return; }
+  if (!mlTalhoes.length) { showToast('⚠️ Adicione pelo menos 1 talhão'); return; }
 
   var btn = document.getElementById('btn-gerar-link');
   btn.textContent = '⏳ Gerando...'; btn.disabled = true;
@@ -1148,13 +1193,16 @@ async function gerarLink() {
     trator:       trator,
     valor_hora:   vh,
     tratorista:   document.getElementById('ml-tratorista').value,
-    obs:          document.getElementById('ml-obs').value
+    obs:          document.getElementById('ml-obs').value,
+    talhoes:      JSON.stringify(mlTalhoes)
   });
 
   btn.textContent = '🔗 Gerar Link'; btn.disabled = false;
 
   if (r.ok) {
-    document.getElementById('link-url-txt').textContent = r.url;
+    // Append talhoes to URL
+    var urlFinal = r.url + '&talhoes=' + encodeURIComponent(JSON.stringify(mlTalhoes));
+    document.getElementById('link-url-txt').textContent = urlFinal;
     document.getElementById('link-gerado').style.display = 'block';
     document.getElementById('btn-gerar-link').style.display = 'none';
     showToast('✅ Link criado!');
