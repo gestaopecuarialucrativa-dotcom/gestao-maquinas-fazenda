@@ -453,7 +453,10 @@ header{background:linear-gradient(135deg,#0D3318,#1A4C2A);height:64px;display:fl
         <select id="ml-trator-sel" onchange="selecionarTratorLink()">
           <option value="">— Selecionar trator cadastrado —</option>
         </select>
-        <div style="font-size:11px;color:var(--ts);margin-top:4px">Ou <span style="color:var(--vm);cursor:pointer;font-weight:700" onclick="abrirModalTrator(null)">+ cadastrar novo trator</span></div>
+        <div style="font-size:11px;color:var(--ts);margin-top:4px;display:flex;gap:10px">
+          <span style="color:var(--vm);cursor:pointer;font-weight:700" onclick="closeModal('modal-link');goPage('tratores');setTimeout(function(){abrirModalTrator(null);},200)">+ Cadastrar novo trator</span>
+          <span id="ml-editar-trator" style="color:#E65100;cursor:pointer;font-weight:700;display:none" onclick="editarTratorDoLink()">✏️ Editar este trator</span>
+        </div>
       </div>
       <div class="fg"><label>Valor da Hora (R$) *</label><input id="ml-vh" type="number" step="0.01" placeholder="Preenchido ao selecionar trator"></div>
       <div class="fg"><label>Trator (nome)</label><input id="ml-trator" placeholder="Preenchido automaticamente" readonly style="background:#f5f5f5"></div>
@@ -510,7 +513,7 @@ header{background:linear-gradient(135deg,#0D3318,#1A4C2A);height:64px;display:fl
 <div class="toast" id="toast"></div>
 
 <script>
-const API = 'https://script.google.com/macros/s/AKfycbynSlLSc5E_sh5lh21MkWN6lxgU7gFdj-XDhtch8TL5ECv2TopgZ8LL-Qc5HzRZr34f9g/exec';
+const API = 'https://script.google.com/macros/s/AKfycbyGoRoMwt-7ltStoomY6PogQgYJDRzbdaSWjAd_P22_8jsK0kdzo-MsgVBJboqHYZPsfO/exec';
 let fazendas=[], fazAt=null, resumo=null, gaugeCharts=[], barChart1=null, barChart2=null;
 
 const TALHAO_COLORS=['#2E7D32','#1565C0','#6A1B9A','#BF360C','#00695C'];
@@ -1128,7 +1131,7 @@ function goToLinks() {
   renderLinksPage();
 }
 
-function abrirModalLink() {
+async function abrirModalLink() {
   if (!fazAt) { showToast('⚠️ Selecione uma fazenda'); return; }
   document.getElementById('ml-fazenda').textContent = fazAt.Nome_Fazenda;
   document.getElementById('ml-trator').value = '';
@@ -1137,6 +1140,15 @@ function abrirModalLink() {
   document.getElementById('ml-obs').value = '';
   document.getElementById('link-gerado').style.display = 'none';
   document.getElementById('btn-gerar-link').style.display = 'inline-flex';
+  mlTalhoes = [];
+  renderTalhoesMini();
+  document.getElementById('ml-talhao-nome').value = '';
+  document.getElementById('ml-talhao-area').value = '';
+  document.getElementById('ml-editar-trator').style.display = 'none';
+  // Recarrega tratores frescos da API
+  var r = await apiGet({action:'getTratores', fazenda_id: fazAt.ID});
+  tratoresCache = (r.ok && r.data) ? r.data : [];
+  preencherSelectTrator();
   openModal('modal-link');
 }
 
@@ -1358,26 +1370,55 @@ async function carregarTratores() {
 function preencherSelectTrator() {
   var sel = document.getElementById('ml-trator-sel');
   if (!sel) return;
-  sel.innerHTML = '<option value="">— Selecionar trator cadastrado —</option>';
+  sel.innerHTML = '';
   var ativos = tratoresCache.filter(function(t){ return String(t.Status) === 'Ativo'; });
+  if (!ativos.length) {
+    sel.innerHTML = '<option value="">⚠️ Nenhum trator cadastrado — cadastre primeiro</option>';
+    // Show manual input
+    document.getElementById('ml-trator').readOnly = false;
+    document.getElementById('ml-trator').style.background = '#fff';
+    document.getElementById('ml-trator').placeholder = 'Digite o nome do trator manualmente';
+    return;
+  }
+  var def = document.createElement('option');
+  def.value = ''; def.textContent = '— Selecionar trator cadastrado —';
+  sel.appendChild(def);
   ativos.forEach(function(t) {
     var opt = document.createElement('option');
     opt.value = t.ID;
-    opt.textContent = t.Nome_Trator + ' — ' + t.Dono + ' (R$ ' + parseFloat(t.Valor_Hora||0).toFixed(2) + '/h)';
+    opt.textContent = t.Nome_Trator + ' · ' + t.Dono + ' · R$ ' + parseFloat(t.Valor_Hora||0).toFixed(2) + '/h';
     opt.dataset.nome = t.Nome_Trator;
     opt.dataset.vh   = t.Valor_Hora;
     opt.dataset.pix  = t.PIX_Chave;
     sel.appendChild(opt);
   });
+  document.getElementById('ml-trator').readOnly = true;
+  document.getElementById('ml-trator').style.background = '#f5f5f5';
 }
 
 function selecionarTratorLink() {
   var sel = document.getElementById('ml-trator-sel');
   var opt = sel.options[sel.selectedIndex];
-  if (!opt || !opt.value) return;
+  if (!opt || !opt.value) {
+    document.getElementById('ml-editar-trator').style.display = 'none';
+    return;
+  }
   document.getElementById('ml-trator').value = opt.dataset.nome || '';
   document.getElementById('ml-vh').value     = opt.dataset.vh   || '';
-  document.getElementById('ml-tratorista').value = '';
+  document.getElementById('ml-editar-trator').style.display = 'inline';
+  document.getElementById('ml-editar-trator').dataset.tid = opt.value;
+}
+
+function editarTratorDoLink() {
+  var tid = document.getElementById('ml-editar-trator').dataset.tid;
+  var trat = tratoresCache.find(function(t){ return t.ID === tid; });
+  if (!trat) return;
+  closeModal('modal-link');
+  setTimeout(function(){
+    goPage('tratores');
+    document.querySelectorAll('.nav').forEach(function(n){ if(n.textContent.includes('Tratores')) n.classList.add('active'); else n.classList.remove('active'); });
+    abrirModalTrator(trat);
+  }, 200);
 }
 
 function renderTratoresPage() {
