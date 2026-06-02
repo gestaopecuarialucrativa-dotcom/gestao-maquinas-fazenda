@@ -168,6 +168,8 @@ header{background:linear-gradient(135deg,#0D3318,#1A4C2A);padding:.9rem 1.2rem;d
         <div id="talhoes-list"></div>
       </div>
 
+      <button class="btn-cancelar" id="btn-encerrar" onclick="encerrarTrabalho()" style="margin-top:.4rem">🔒 Encerrar trabalho (fechar link)</button>
+
       <!-- SERVIÇO ATIVO -->
       <div class="servico-card" id="servico-card" style="display:none">
         <div class="servico-title">
@@ -213,6 +215,7 @@ header{background:linear-gradient(135deg,#0D3318,#1A4C2A);padding:.9rem 1.2rem;d
             <textarea id="f-obs" placeholder="Paradas, quebras, condições do campo..."></textarea>
           </div>
         </div>
+        <button class="btn-iniciar" id="btn-iniciar" onclick="iniciarServico()" style="display:none">▶️ Iniciar trabalho</button>
         <button class="btn-finalizar" id="btn-finalizar" onclick="finalizarTalhao()">✅ Finalizar este Talhão</button>
         <button class="btn-cancelar" onclick="cancelarServico()">✕ Cancelar</button>
       </div>
@@ -256,6 +259,7 @@ const API = 'https://script.google.com/macros/s/AKfycbz84ylHuz_VXku3936nEUHwX3Jj
 var CONFIG = null;
 var talhoes = [];       // [{nome, area, status:'aguardando'|'ativo'|'concluido', horas, custo, id_lan}]
 var talhaoAtivo = null; // index do talhão em andamento
+var modoServico = 'iniciar'; // 'iniciar' ou 'finalizar'
 var ultimoHorFin = 0;   // para preencher próximo horímetro inicial automaticamente
 var registrosDia = [];   // lançamentos salvos no dia
 
@@ -336,9 +340,10 @@ function mostrarApp(talhoesInit) {
 
   // Inicializa talhões
   talhoes = talhoesInit.map(function(t) {
-    return {nome: t.nome, area: parseFloat(t.area)||0, status:'aguardando', horas:0, custo:0, id_lan:''};
+    return {nome: t.nome, area: parseFloat(t.area)||0, status:'aguardando', horas:0, custo:0, id_lan:'', hiSalvo:0, inicioData:''};
   });
   renderTalhoes();
+  carregarEmAndamento();
   carregarHistorico();
 }
 
@@ -353,9 +358,15 @@ function renderTalhoes() {
   var todosConc = talhoes.every(function(t){ return t.status === 'concluido'; });
   talhoes.forEach(function(t, i) {
     var div = document.createElement('div');
-    div.className = 'talhao-item ' + (t.status === 'ativo' ? 'ativo' : t.status === 'concluido' ? 'concluido' : '');
-    var statusLabel = t.status === 'aguardando' ? 'Aguardando' : t.status === 'ativo' ? '⚙️ Em andamento' : '✅ Concluído';
-    var statusCls   = t.status === 'aguardando' ? 'status-aguardando' : t.status === 'ativo' ? 'status-ativo' : 'status-concluido';
+    var emAnd = (t.status === 'ativo' || t.status === 'andamento');
+    div.className = 'talhao-item ' + (emAnd ? 'ativo' : t.status === 'concluido' ? 'concluido' : '');
+    var statusLabel = t.status === 'aguardando' ? 'Toque p/ iniciar'
+                    : t.status === 'andamento' ? '⚙️ Em andamento · toque p/ finalizar'
+                    : t.status === 'ativo' ? '⚙️ Em andamento'
+                    : '✅ Concluído';
+    var statusCls   = t.status === 'aguardando' ? 'status-aguardando'
+                    : t.status === 'concluido' ? 'status-concluido'
+                    : 'status-ativo';
     var horasInfo   = t.status === 'concluido' ? '<div class="talhao-horas">' + t.horas.toFixed(2) + 'h · R$ ' + t.custo.toLocaleString('pt-BR',{minimumFractionDigits:2}) + '</div>' : '';
     div.innerHTML =
       '<div class="talhao-left">' +
@@ -366,8 +377,10 @@ function renderTalhoes() {
       '<span class="talhao-status ' + statusCls + '">' + statusLabel + '</span>' +
       horasInfo +
       '</div>';
-    if (t.status === 'aguardando' && talhaoAtivo === null) {
+    if (t.status === 'aguardando') {
       div.onclick = function() { iniciarTalhao(i); };
+    } else if (t.status === 'andamento') {
+      div.onclick = function() { abrirFinalizar(i); };
     }
     el.appendChild(div);
   });
@@ -390,8 +403,148 @@ function renderTalhoes() {
   }
 }
 
-// ── INICIAR TALHÃO ────────────────────────────────────────────────────
+// ── INICIAR TALHÃO (passo 1: só horímetro inicial) ────────────────────
 function iniciarTalhao(idx) {
+  talhaoAtivo = idx;
+  modoServico = 'iniciar';
+  document.getElementById('h-ini').readOnly = false;
+  document.getElementById('h-ini').value = ultimoHorFin > 0 ? ultimoHorFin : '';
+  document.getElementById('h-fin').value = '';
+  document.getElementById('f-obs').value = '';
+  document.getElementById('box-fin').style.display = 'none';
+  document.getElementById('btn-iniciar').style.display = 'flex';
+  document.getElementById('btn-finalizar').style.display = 'none';
+  document.getElementById('calc-bar').style.display = 'none';
+  document.getElementById('alert-hor').style.display = 'none';
+  document.getElementById('box-ini').classList.remove('error');
+  document.getElementById('box-ini').classList.toggle('has-value', ultimoHorFin > 0);
+  document.getElementById('box-fin').classList.remove('error','has-value');
+  document.getElementById('servico-talhao-nome').textContent = talhoes[idx].nome;
+  document.getElementById('servico-card').style.display = 'block';
+  document.getElementById('servico-card').scrollIntoView({behavior:'smooth'});
+  renderTalhoes();
+}
+
+// ── ABRIR FINALIZAÇÃO (passo 2: só horímetro final) ───────────────────
+function abrirFinalizar(idx) {
+  talhaoAtivo = idx;
+  modoServico = 'finalizar';
+  var t = talhoes[idx];
+  document.getElementById('h-ini').value = t.hiSalvo || '';
+  document.getElementById('h-ini').readOnly = true;
+  document.getElementById('h-fin').value = '';
+  document.getElementById('f-obs').value = '';
+  document.getElementById('box-fin').style.display = 'block';
+  document.getElementById('btn-iniciar').style.display = 'none';
+  document.getElementById('btn-finalizar').style.display = 'flex';
+  document.getElementById('calc-bar').style.display = 'none';
+  document.getElementById('alert-hor').style.display = 'none';
+  document.getElementById('box-ini').classList.add('has-value');
+  document.getElementById('box-ini').classList.remove('error');
+  document.getElementById('box-fin').classList.remove('error','has-value');
+  document.getElementById('servico-talhao-nome').textContent = t.nome + (t.inicioData ? ' (iniciado ' + t.inicioData + ')' : '');
+  document.getElementById('servico-card').style.display = 'block';
+  document.getElementById('servico-card').scrollIntoView({behavior:'smooth'});
+  renderTalhoes();
+}
+
+// ── SALVAR INÍCIO (passo 1) ───────────────────────────────────────────
+async function iniciarServico() {
+  var hi = parseFloat(document.getElementById('h-ini').value) || 0;
+  if (hi === 0) { showToast('⚠️ Informe o horímetro inicial!'); return; }
+  var idx = talhaoAtivo;
+  if (idx === null) return;
+  var btn = document.getElementById('btn-iniciar');
+  btn.textContent = '⏳ Salvando...'; btn.disabled = true;
+  var dataFmt = new Date().toLocaleDateString('pt-BR');
+  var body = {
+    action:       'iniciarServico',
+    Fazenda_ID:   CONFIG.fazenda_id,
+    Nome_Fazenda: CONFIG.fazenda_nome,
+    Data:         dataFmt,
+    Tratorista:   CONFIG.tratorista || 'Tratorista',
+    Trator:       CONFIG.trator,
+    Dono_Trator:  CONFIG.dono || '',
+    Talhao_Area:  talhoes[idx].nome,
+    Area_ha:      talhoes[idx].area || '',
+    Horimetro_Inicial: hi,
+    Valor_Hora:   CONFIG.valor_hora,
+    Tarefa:       document.getElementById('f-tarefa').value,
+    Observacoes:  document.getElementById('f-obs').value,
+    token:        CONFIG.token
+  };
+  var ok = false, novoId = '';
+  try {
+    var r = await fetch(API, {method:'POST', body:JSON.stringify(body)});
+    var j = await r.json();
+    if (j.ok) { ok = true; novoId = j.id; }
+  } catch(e) { /* sem conexão */ }
+  if (ok) {
+    talhoes[idx].status     = 'andamento';
+    talhoes[idx].id_lan     = novoId;
+    talhoes[idx].hiSalvo    = hi;
+    talhoes[idx].inicioData = dataFmt;
+    talhaoAtivo = null;
+    document.getElementById('servico-card').style.display = 'none';
+    showToast('▶️ Início registrado! Finalize quando desligar o trator.');
+    renderTalhoes();
+  } else {
+    showToast('❌ Não consegui salvar o início. Verifique a conexão.');
+  }
+  btn.textContent = '▶️ Iniciar trabalho'; btn.disabled = false;
+}
+
+// ── CARREGAR TRABALHOS EM ANDAMENTO ───────────────────────────────────
+async function carregarEmAndamento() {
+  if (!CONFIG.token && !CONFIG.fazenda_id) return; // modo demo
+  try {
+    var url = API + '?action=getEmAndamento&fazenda_id=' + encodeURIComponent(CONFIG.fazenda_id || '') +
+              '&trator=' + encodeURIComponent(CONFIG.trator || '');
+    var r = await fetch(url);
+    var j = await r.json();
+    if (!j.ok || !j.data) return;
+    j.data.forEach(function(rec) {
+      var nome = String(rec.Talhao_Area || '');
+      for (var i = 0; i < talhoes.length; i++) {
+        if (talhoes[i].nome === nome && talhoes[i].status === 'aguardando') {
+          talhoes[i].status     = 'andamento';
+          talhoes[i].id_lan     = rec.ID;
+          talhoes[i].hiSalvo    = parseFloat(rec.Horimetro_Inicial) || 0;
+          talhoes[i].inicioData = rec.Data || '';
+          break;
+        }
+      }
+    });
+    renderTalhoes();
+  } catch(e) { /* offline: segue sem em-andamento */ }
+}
+
+// ── ENCERRAR TRABALHO (fecha o link) ──────────────────────────────────
+async function encerrarTrabalho() {
+  var emAberto = talhoes.filter(function(t){ return t.status === 'andamento'; }).length;
+  var msg = emAberto > 0
+    ? 'Você ainda tem ' + emAberto + ' talhão(ões) em andamento sem finalizar. Encerrar o link mesmo assim?'
+    : 'Encerrar este link? Depois não será mais possível lançar por aqui.';
+  if (!confirm(msg)) return;
+  if (CONFIG.token) {
+    try {
+      await fetch(API, {method:'POST', body:JSON.stringify({action:'encerrarLink', token: CONFIG.token})});
+    } catch(e) { /* segue mesmo offline */ }
+  }
+  document.getElementById('talhoes-section').style.display = 'none';
+  document.getElementById('servico-card').style.display = 'none';
+  var btnEnc = document.getElementById('btn-encerrar'); if (btnEnc) btnEnc.style.display = 'none';
+  var sucT = document.querySelector('#success-section .success-title');
+  var sucS = document.querySelector('#success-section .success-sub');
+  if (sucT) sucT.textContent = 'Trabalho encerrado!';
+  if (sucS) sucS.innerHTML = 'O link foi fechado. Obrigado!';
+  var btnProx = document.querySelector('#success-section .btn-proximo'); if (btnProx) btnProx.style.display = 'none';
+  document.getElementById('success-section').style.display = 'block';
+  document.getElementById('success-section').scrollIntoView({behavior:'smooth'});
+}
+
+// ── (legado) iniciarTalhao antigo substituído pelo fluxo de 2 passos ──
+function _iniciarTalhaoLegado(idx) {
   talhaoAtivo = idx;
   talhoes[idx].status = 'ativo';
 
@@ -477,67 +630,46 @@ async function finalizarTalhao() {
   var dataFmt = dp.length === 3 ? dp[2]+'/'+dp[1]+'/'+dp[0] : document.getElementById('f-data').value;
 
   var body = {
-    action:       'addLancamento',
-    Fazenda_ID:   CONFIG.fazenda_id,
-    Nome_Fazenda: CONFIG.fazenda_nome,
-    Data:         dataFmt,
-    Tratorista:   CONFIG.tratorista || 'Tratorista',
-    Trator:       CONFIG.trator,
-    Dono_Trator:  CONFIG.dono || '',
-    Talhao_Area:  talhoes[talhaoAtivo].nome,
-    Area_ha:      area || '',
-    Horimetro_Inicial: hi,
-    Horimetro_Final:   hf,
-    Valor_Hora:   CONFIG.valor_hora,
-    Tarefa:       document.getElementById('f-tarefa').value,
-    Observacoes:  document.getElementById('f-obs').value,
-    token:        CONFIG.token
+    action:          'finalizarServico',
+    id:              talhoes[talhaoAtivo].id_lan,
+    Horimetro_Final: hf,
+    token:           CONFIG.token
   };
 
   var salvo = false;
   try {
     var r = await fetch(API, {method:'POST', body:JSON.stringify(body)});
     var j = await r.json();
-    if (j.ok) salvo = true;
-  } catch(e) {
-    salvo = true; // offline: salva localmente
-  }
+    if (j.ok) { salvo = true; if (typeof j.horas !== 'undefined') horas = j.horas; if (typeof j.custo !== 'undefined') custo = j.custo; }
+  } catch(e) { /* sem conexão */ }
 
   if (salvo) {
-    // Atualiza estado do talhão
+    var nomeT = talhoes[talhaoAtivo].nome;
+    var iniT  = talhoes[talhaoAtivo].inicioData || '';
     talhoes[talhaoAtivo].status = 'concluido';
     talhoes[talhaoAtivo].horas  = horas;
     talhoes[talhaoAtivo].custo  = custo;
 
-    // Guarda para resumo do dia
     registrosDia.push({
-      talhao: talhoes[talhaoAtivo].nome,
+      talhao: nomeT,
       area:   area,
       horas:  horas,
       custo:  custo,
       hi:     hi,
       hf:     hf,
-      data:   dataFmt
+      data:   iniT
     });
 
-    // Próximo horímetro = atual final
     ultimoHorFin = hf;
     talhaoAtivo  = null;
     document.getElementById('servico-card').style.display = 'none';
-
-    // Próximo talhão disponível?
-    var proximo = talhoes.find(function(t){ return t.status === 'aguardando'; });
-    if (proximo) {
-      showToast('✅ ' + talhoes.find(function(t){ return t.status==='concluido'; }).nome.split('')[0] + ' salvo! Próximo talhão disponível.');
-    } else {
-      showToast('✅ Todos os talhões concluídos!');
-    }
+    showToast('✅ ' + nomeT + ' finalizado!');
 
     renderTalhoes();
     renderResumoDia();
     carregarHistorico();
   } else {
-    showToast('❌ Erro ao salvar. Tente novamente.');
+    showToast('❌ Não consegui finalizar. Verifique a conexão e tente de novo.');
   }
 
   btn.textContent = '✅ Finalizar este Talhão';
