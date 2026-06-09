@@ -513,7 +513,7 @@ header{background:linear-gradient(135deg,#0D3318,#1A4C2A);height:64px;display:fl
 <div class="toast" id="toast"></div>
 
 <script>
-const API = 'https://script.google.com/macros/s/AKfycbz84ylHuz_VXku3936nEUHwX3JjhTbUCDyFYlX5l9I--9W5XJDaMbtub8AHnTfnT80a1w/exec';
+const API = 'https://script.google.com/macros/s/AKfycbyGoRoMwt-7ltStoomY6PogQgYJDRzbdaSWjAd_P22_8jsK0kdzo-MsgVBJboqHYZPsfO/exec';
 let fazendas=[], fazAt=null, resumo=null, gaugeCharts=[], barChart1=null, barChart2=null;
 
 const TALHAO_COLORS=['#2E7D32','#1565C0','#6A1B9A','#BF360C','#00695C'];
@@ -679,10 +679,7 @@ function renderDash(){
     '<div class="kpi" style="--vm:#E65100;--vv:#F57F17"><div class="kpi-ico">⏳</div><div class="kpi-lbl">A Pagar</div><div class="kpi-val">'+fmtR(d.totalPendente||0)+'</div><div class="kpi-sub">Serviços pendentes</div></div>';
   var rows='';
   (d.lancamentos||[]).forEach(function(l){
-    var emAnd = String(l.Status_Servico||'')==='Em andamento';
-    var celHoras = emAnd ? '<span class="badge" style="background:#FFF1CC;color:#F57F17">⏳ Em andamento</span>' : '<strong>'+fmtN(l.Horas_Trabalhadas,1)+'h</strong>';
-    var celCusto = emAnd ? '—' : fmtR(l.Custo_Total);
-    rows+='<tr><td>'+formatDate(l.Data)+'</td><td><strong>'+l.Talhao_Area+'</strong></td><td><span class="badge">'+l.Trator+'</span></td><td>'+(parseFloat(l.Area_ha||0)||'—')+'</td><td>'+celHoras+'</td><td class="money">'+celCusto+'</td><td style="max-width:160px;white-space:normal;font-size:12px;color:var(--ts)">'+( l.Observacoes||'—')+'</td></tr>';
+    rows+='<tr><td>'+formatDate(l.Data)+'</td><td><strong>'+l.Talhao_Area+'</strong></td><td><span class="badge">'+l.Trator+'</span></td><td>'+(parseFloat(l.Area_ha||0)||'—')+'</td><td><strong>'+fmtN(l.Horas_Trabalhadas,1)+'h</strong></td><td class="money">'+fmtR(l.Custo_Total)+'</td><td style="max-width:160px;white-space:normal;font-size:12px;color:var(--ts)">'+( l.Observacoes||'—')+'</td></tr>';
   });
   document.getElementById('dash-table').innerHTML='<div class="card"><div class="card-head">Operações Registradas</div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Data</th><th>Talhão</th><th>Trator</th><th>Área</th><th>Horas</th><th>Custo</th><th>Obs.</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
 }
@@ -691,19 +688,12 @@ function renderDash(){
 function renderLanc(){
   var rows='';
   (resumo&&resumo.lancamentos||[]).forEach(function(l){
-    var emAnd = String(l.Status_Servico||'')==='Em andamento';
     var pago = String(l.Status_Pagamento||'Pendente')==='Pago';
-    var statusBadge = emAnd
-      ? '<span class="pago-badge" style="background:#FFF1CC;color:#F57F17">⏳ Em andamento</span>'
-      : (pago ? '<span class="pago-badge pago-sim">✅ Pago</span>' : '<span class="pago-badge pago-nao">⏳ Pendente</span>');
-    var pagarBtn = emAnd ? ''
-      : (pago
-        ? '<button class="btn-despagar" id="dpagar-'+l.ID+'">↩ Desfazer</button>'
-        : '<button class="btn-pagar" id="pagar-'+l.ID+'">💰 Marcar Pago</button>');
-    var celFin   = emAnd ? '—' : fmtN(l.Horimetro_Final,1);
-    var celHoras = emAnd ? '—' : '<strong>'+fmtN(l.Horas_Trabalhadas,1)+'h</strong>';
-    var celCusto = emAnd ? '—' : fmtR(l.Custo_Total);
-    rows+='<tr><td>'+formatDate(l.Data)+'</td><td>'+(l.Tratorista||'—')+'</td><td><span class="badge">'+l.Trator+'</span></td><td>'+l.Talhao_Area+'</td><td>'+(parseFloat(l.Area_ha||0)||'—')+'</td><td>'+fmtN(l.Horimetro_Inicial,1)+'</td><td>'+celFin+'</td><td>'+celHoras+'</td><td class="money">'+celCusto+'</td><td>'+statusBadge+'<br>'+pagarBtn+'</td><td><button class="btn btn-edit" id="edit-'+l.ID+'">✏️ Editar</button></td></tr>';
+    var statusBadge = pago ? '<span class="pago-badge pago-sim">✅ Pago</span>' : '<span class="pago-badge pago-nao">⏳ Pendente</span>';
+    var pagarBtn = pago
+      ? '<button class="btn-despagar" id="dpagar-'+l.ID+'">↩ Desfazer</button>'
+      : '<button class="btn-pagar" id="pagar-'+l.ID+'">💰 Marcar Pago</button>';
+    rows+='<tr><td>'+formatDate(l.Data)+'</td><td>'+(l.Tratorista||'—')+'</td><td><span class="badge">'+l.Trator+'</span></td><td>'+l.Talhao_Area+'</td><td>'+(parseFloat(l.Area_ha||0)||'—')+'</td><td>'+fmtN(l.Horimetro_Inicial,1)+'</td><td>'+fmtN(l.Horimetro_Final,1)+'</td><td><strong>'+fmtN(l.Horas_Trabalhadas,1)+'h</strong></td><td class="money">'+fmtR(l.Custo_Total)+'</td><td>'+statusBadge+'<br>'+pagarBtn+'</td><td><button class="btn btn-edit" id="edit-'+l.ID+'">✏️ Editar</button></td></tr>';
   });
   document.getElementById('lanc-table').innerHTML='<div class="card"><div class="card-head">Lançamentos — '+(fazAt?fazAt.Nome_Fazenda:'')+'</div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Data</th><th>Tratorista</th><th>Trator</th><th>Talhão</th><th>Área</th><th>Hor.Ini</th><th>Hor.Fin</th><th>Horas</th><th>Custo</th><th>Status</th><th>Ação</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
   // Attach edit listeners safely
@@ -971,7 +961,6 @@ async function salvarLanc(){
   var hi=parseFloat(document.getElementById('l-hi').value)||0;
   var hf=parseFloat(document.getElementById('l-hf').value)||0;
   if(!document.getElementById('l-trator').value||!document.getElementById('l-data').value||hi===0||hf===0){showToast('⚠️ Preencha: Data, Trator e Horímetros');return;}
-  if(hf<=hi){showToast('⚠️ O horímetro final deve ser maior que o inicial');return;}
   var btn=document.getElementById('btn-sv-lanc');btn.textContent='⏳...';btn.disabled=true;
   var editId=document.getElementById('l-id').value;
   var r=await apiPost({action:editId?'editLancamento':'addLancamento',ID:editId,
@@ -1160,7 +1149,6 @@ async function abrirModalLink() {
   document.getElementById('link-gerado').style.display = 'none';
   document.getElementById('btn-gerar-link').style.display = 'inline-flex';
   mlTalhoes = [];
-  mlDonoSel = '';
   renderTalhoesMini();
   document.getElementById('ml-talhao-nome').value = '';
   document.getElementById('ml-talhao-area').value = '';
@@ -1173,7 +1161,6 @@ async function abrirModalLink() {
 }
 
 var mlTalhoes = []; // talhoes do link sendo criado
-var mlDonoSel = ''; // dono do trator selecionado no link
 
 function adicionarTalhaoLink() {
   var nome = document.getElementById('ml-talhao-nome').value.trim();
@@ -1227,7 +1214,6 @@ async function gerarLink() {
     valor_hora:   vh,
     tratorista:   document.getElementById('ml-tratorista').value,
     obs:          document.getElementById('ml-obs').value,
-    dono:         mlDonoSel,
     talhoes:      JSON.stringify(mlTalhoes)
   });
 
@@ -1349,12 +1335,6 @@ async function renderLinksPage() {
       encSp.textContent = 'Serviço encerrado';
       acts.appendChild(encSp);
     }
-    var btnDel = document.createElement('button');
-    btnDel.className = 'btn-link-enc';
-    btnDel.style.opacity = '.85';
-    btnDel.textContent = '🗑 Excluir';
-    btnDel.onclick = (function(t){ return function(){ excluirLink(t); }; })(lk.Token);
-    acts.appendChild(btnDel);
     body.appendChild(acts);
     card.appendChild(body);
     el.appendChild(card);
@@ -1365,12 +1345,6 @@ function compartilharWpp(urlEnc) {
   window.open('https://wa.me/?text=' + urlEnc, '_blank');
 }
 
-async function excluirLink(token) {
-  if (!confirm('Excluir este link da lista? (some daqui — útil pra limpar links de teste)')) return;
-  var r = await apiPost({action:'excluirLink', token:token});
-  showToast(r.ok ? '🗑 Link excluído' : '❌ '+(r.erro||'erro'));
-  if (r.ok) renderLinksPage();
-}
 async function pausarLink(token) {
   var r = await apiPost({action:'pausarLink', token:token});
   showToast(r.ok ? '⏸ Link pausado' : '❌ '+r.erro);
@@ -1424,7 +1398,6 @@ function preencherSelectTrator() {
     opt.dataset.nome = t.Nome_Trator;
     opt.dataset.vh   = t.Valor_Hora;
     opt.dataset.pix  = t.PIX_Chave;
-    opt.dataset.dono = t.Dono || '';
     sel.appendChild(opt);
   });
   document.getElementById('ml-trator').readOnly = true;
@@ -1436,12 +1409,10 @@ function selecionarTratorLink() {
   var opt = sel.options[sel.selectedIndex];
   if (!opt || !opt.value) {
     document.getElementById('ml-editar-trator').style.display = 'none';
-    mlDonoSel = '';
     return;
   }
   document.getElementById('ml-trator').value = opt.dataset.nome || '';
   document.getElementById('ml-vh').value     = opt.dataset.vh   || '';
-  mlDonoSel = opt.dataset.dono || '';
   document.getElementById('ml-editar-trator').style.display = 'inline';
   document.getElementById('ml-editar-trator').dataset.tid = opt.value;
 }
