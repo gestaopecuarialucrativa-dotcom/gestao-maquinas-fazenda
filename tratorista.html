@@ -263,7 +263,7 @@
       <!-- HISTÓRICO -->
       <div class="hist-card" id="hist-card" style="display:none">
         <div class="hist-title">
-          <span>📈 Minha Produção</span>
+          <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1B5E20" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:5px"><path d="M3 3v18h18"/><path d="M7 16l4-6 4 3 5-7"/></svg>Minha Produção</span>
           <span id="hist-total" style="font-size:12px;font-weight:500;color:var(--ts)"></span>
         </div>
         <div id="hist-list"></div>
@@ -286,6 +286,8 @@
 <script>
 const API = 'https://script.google.com/macros/s/AKfycbz84ylHuz_VXku3936nEUHwX3JjhTbUCDyFYlX5l9I--9W5XJDaMbtub8AHnTfnT80a1w/exec';
 
+// formata h/ha; abaixo de 1 hora por hectare mostra em minutos (inteiro)
+function fmtHpHa(v){ v=parseFloat(v||0); if(!(v>0)) return '—'; if(v<1){ return Math.round(v*60)+' min/ha'; } return v.toFixed(v<10?2:1).replace('.',',')+' h/ha'; }
 var CONFIG = null;
 var talhoes = [];       // [{nome, area, status:'aguardando'|'ativo'|'concluido', horas, custo, id_lan}]
 var talhaoAtivo = null; // index do talhão em andamento
@@ -790,10 +792,17 @@ async function carregarHistorico() {
       map[k].area  += parseFloat(l.Area_ha)||0;
       map[k].count++;
     });
-    var dados = Object.values(map).sort(function(a,b){ return b.horas - a.horas; }).slice(0,5);
-    var totalH = dados.reduce(function(s,d){ return s + d.horas; }, 0);
+    // calcula eficiencia (h/ha) de cada talhao; menos tempo por hectare = melhor
+    var todos = Object.values(map);
+    todos.forEach(function(d){ d.hpha = d.area > 0 ? d.horas / d.area : null; });
+    // ranqueaveis: precisa de area e horas para ter h/ha
+    var ranq = todos.filter(function(d){ return d.area > 0 && d.horas > 0; })
+                    .sort(function(a,b){ return a.hpha - b.hpha; });
+    var dados = ranq.slice(0,5);
+    var totalH = todos.reduce(function(s,d){ return s + d.horas; }, 0);
+    var totalA = todos.reduce(function(s,d){ return s + d.area; }, 0);
 
-    document.getElementById('hist-total').textContent = totalH.toFixed(1) + 'h · ' + dados.reduce(function(s,d){return s+d.area;},0).toFixed(1) + ' ha';
+    document.getElementById('hist-total').textContent = totalH.toFixed(1) + 'h · ' + totalA.toFixed(1) + ' ha';
 
     // Monta pódio SVG
     var list = document.getElementById('hist-list');
@@ -805,6 +814,15 @@ async function carregarHistorico() {
       return;
     }
 
+    // Frase de reconhecimento — melhor talhão (menor h/ha)
+    var melhor = dados[0];
+    var elogioHtml =
+      '<div style="background:#E8F5E9;border-left:4px solid #2E7D32;border-radius:12px;padding:.85rem 1rem;margin-bottom:1rem;display:flex;align-items:center;gap:10px">' +
+      '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2E7D32" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="M12 15a4 4 0 0 0 4-4V5a4 4 0 0 0-8 0v6a4 4 0 0 0 4 4Z"/><path d="M8 11a4 4 0 0 1-4-4"/><path d="M16 11a4 4 0 0 0 4-4"/><path d="M12 15v4"/><path d="M8 22h8"/><path d="M9 19h6"/></svg>' +
+      '<div style="font-size:13px;line-height:1.4;color:#1b3a1f"><strong>Mandou bem!</strong> Seu serviço mais rápido foi no <strong>' + melhor.nome + '</strong> — ' + fmtHpHa(melhor.hpha) + '.</div>' +
+      '</div>';
+    list.innerHTML = elogioHtml;
+
     // Reordena: 2º, 1º, 3º (estilo pódio), depois 4º e 5º se houver
     var ordenado = [];
     if (dados[1]) ordenado.push(dados[1]); // prata — esquerda
@@ -812,21 +830,22 @@ async function carregarHistorico() {
     if (dados[2]) ordenado.push(dados[2]); // bronze — direita
     var extras = dados.slice(3);
 
-    var maxH = dados[0].horas || 1;
+    var piorHpha = dados[dados.length-1].hpha || 1; // maior h/ha entre os exibidos
     var n    = ordenado.length;
     var W    = 300; // viewBox width
     var barW = 64;
     var gap  = (W - n * barW) / (n + 1);
     var maxBarH = 110;
     var svgH = 200;
-    var medalhas = ['🥈','🥇','🥉'];
-    var cores    = ['#64B5F6','#FFD54F','#FF8A65'];
+    // ordem visual 2º,1º,3º -> cores GPL (centro = 1º = verde forte)
+    var cores    = ['#66BB6A','#2E7D32','#9CCC65'];
+    var posNum   = ['2','1','3'];
 
     var svgParts = ['<svg viewBox="0 0 '+W+' '+svgH+'" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block;overflow:visible">'];
 
     ordenado.forEach(function(d, i) {
       var x   = gap + i * (barW + gap);
-      var pct = d.horas / maxH;
+      var pct = piorHpha > 0 ? (1 - (d.hpha / piorHpha) * 0.7) : 1; // menor h/ha = barra maior
       var bh  = Math.max(pct * maxBarH, 20);
       var by  = svgH - 36 - bh; // bottom da barra (36 = espaço rótulo)
       var cx  = x + barW / 2;
@@ -840,12 +859,14 @@ async function carregarHistorico() {
       // Brilho topo
       svgParts.push('<rect x="'+(x+6)+'" y="'+(by+5)+'" width="'+(barW-12)+'" height="8" rx="4" fill="rgba(255,255,255,.35)"/>');
 
-      // Medalha
-      svgParts.push('<text x="'+cx+'" y="'+(by-8)+'" text-anchor="middle" font-size="'+(ehOuro?'22':'18')+'">'+medalhas[i]+'</text>');
+      // Posição (círculo com número, padrão GPL) acima da barra
+      var rr = ehOuro ? 15 : 13;
+      svgParts.push('<circle cx="'+cx+'" cy="'+(by-rr-4)+'" r="'+rr+'" fill="#fff" stroke="'+cor+'" stroke-width="2"/>');
+      svgParts.push('<text x="'+cx+'" y="'+(by-rr-4+ (ehOuro?6:5))+'" text-anchor="middle" font-size="'+(ehOuro?'17':'15')+'" font-weight="800" fill="'+cor+'" font-family="system-ui,sans-serif">'+posNum[i]+'</text>');
 
-      // Horas dentro da barra (se couber)
+      // Eficiência dentro da barra (se couber)
       if (bh > 28) {
-        svgParts.push('<text x="'+cx+'" y="'+(by+bh/2+5)+'" text-anchor="middle" font-size="12" font-weight="800" fill="'+(ehOuro?'#5D4037':'#37474F')+'" font-family="system-ui,sans-serif">'+d.horas.toFixed(1)+'h</text>');
+        svgParts.push('<text x="'+cx+'" y="'+(by+bh/2+4)+'" text-anchor="middle" font-size="10.5" font-weight="800" fill="#fff" font-family="system-ui,sans-serif">'+fmtHpHa(d.hpha)+'</text>');
       }
 
       // Nome talhão (embaixo)
@@ -872,9 +893,9 @@ async function carregarHistorico() {
         div.innerHTML =
           '<div class="hist-row"><span class="hist-talhao">' + d.nome + '</span></div>' +
           '<div class="hist-metrics">' +
-          '<div class="hist-m"><div class="hist-mval">'+d.horas.toFixed(1)+'h</div><div class="hist-mlbl">Horas</div></div>' +
+          '<div class="hist-m"><div class="hist-mval">'+fmtHpHa(d.hpha)+'</div><div class="hist-mlbl">Eficiência</div></div>' +
           '<div class="hist-m"><div class="hist-mval">'+(d.area>0?d.area.toFixed(1)+' ha':'—')+'</div><div class="hist-mlbl">Área</div></div>' +
-          '<div class="hist-m"><div class="hist-mval">'+d.count+'x</div><div class="hist-mlbl">Serviços</div></div>' +
+          '<div class="hist-m"><div class="hist-mval">'+d.horas.toFixed(1)+'h</div><div class="hist-mlbl">Horas</div></div>' +
           '</div>';
         list.appendChild(div);
       });
