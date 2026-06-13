@@ -484,6 +484,8 @@ header{background:linear-gradient(135deg,#0D3318,#1A4C2A);height:64px;display:fl
         <label>Talhões do link *</label>
         <div style="font-size:11px;color:var(--ts);margin-bottom:6px">Adicione os talhões que o tratorista vai trabalhar neste link</div>
         <div id="ml-talhoes-lista" style="margin-bottom:8px"></div>
+        <div id="ml-mapa-sel" style="margin-bottom:10px"></div>
+        <div style="font-size:11px;color:var(--ts);margin-bottom:6px">Ou digite um nome fora do mapa:</div>
         <div style="display:flex;gap:6px;align-items:flex-end">
           <div style="flex:2"><input id="ml-talhao-nome" placeholder="Nome do talhão (Ex: Pasto 6)" style="border:1.5px solid var(--cb);border-radius:8px;padding:9px 11px;font-size:14px;width:100%;font-family:Roboto,sans-serif;outline:none"></div>
           <div style="flex:1"><input id="ml-talhao-area" type="number" step="0.01" placeholder="Área (ha)" style="border:1.5px solid var(--cb);border-radius:8px;padding:9px 11px;font-size:14px;width:100%;font-family:Roboto,sans-serif;outline:none"></div>
@@ -1212,6 +1214,7 @@ async function abrirModalLink() {
   mlTalhoes = [];
   mlDonoSel = '';
   renderTalhoesMini();
+  renderMapaSeletor();
   document.getElementById('ml-talhao-nome').value = '';
   document.getElementById('ml-talhao-area').value = '';
   document.getElementById('ml-editar-trator').style.display = 'none';
@@ -1222,7 +1225,50 @@ async function abrirModalLink() {
   openModal('modal-link');
 }
 
+// Piquetes do mapa da fazenda (Estrela) — nomes padronizados
+var MAPA_PIQUETES = [{"id": "PA01", "label": "PA 01", "tipo": "pasto", "ha": 6.65, "x": 14.0, "y": 16.0}, {"id": "PA02", "label": "PA 02", "tipo": "pasto", "ha": 24.15, "x": 32.0, "y": 8.0}, {"id": "PA03", "label": "PA 03", "tipo": "pasto", "ha": 13.56, "x": 27.0, "y": 22.0}, {"id": "PA04", "label": "PA 04", "tipo": "pasto", "ha": 6.23, "x": 41.0, "y": 30.0}, {"id": "PA05", "label": "PA 05", "tipo": "pasto", "ha": 6.46, "x": 48.0, "y": 22.0}, {"id": "PA06", "label": "PA 06", "tipo": "pasto", "ha": 7.96, "x": 48.0, "y": 35.0}, {"id": "PA07", "label": "PA 07", "tipo": "pasto", "ha": 10.93, "x": 55.0, "y": 27.0}, {"id": "PA08", "label": "PA 08", "tipo": "pasto", "ha": 6.69, "x": 61.0, "y": 18.0}, {"id": "PA09", "label": "PA 09", "tipo": "pasto", "ha": 8.33, "x": 70.0, "y": 12.0}, {"id": "PA10", "label": "PA 10", "tipo": "pasto", "ha": 7.17, "x": 82.0, "y": 20.0}, {"id": "M01P01", "label": "M1/P1", "tipo": "modulo", "ha": 4.69, "x": 37.0, "y": 44.0}, {"id": "M01P02", "label": "M1/P2", "tipo": "modulo", "ha": 7.38, "x": 30.0, "y": 38.0}, {"id": "M01P03", "label": "M1/P3", "tipo": "modulo", "ha": 4.24, "x": 22.0, "y": 44.0}, {"id": "M01P04", "label": "M1/P4", "tipo": "modulo", "ha": 5.13, "x": 24.0, "y": 54.0}, {"id": "M01P05", "label": "M1/P5", "tipo": "modulo", "ha": 5.79, "x": 33.0, "y": 54.0}, {"id": "M01P06", "label": "M1/P6", "tipo": "modulo", "ha": 4.53, "x": 40.0, "y": 50.0}, {"id": "M02P01", "label": "M2/P1", "tipo": "modulo", "ha": 6.04, "x": 34.0, "y": 65.0}, {"id": "M02P02", "label": "M2/P2", "tipo": "modulo", "ha": 5.15, "x": 24.0, "y": 62.0}, {"id": "M02P03", "label": "M2/P3", "tipo": "modulo", "ha": 5.85, "x": 20.0, "y": 73.0}, {"id": "M02P04", "label": "M2/P4", "tipo": "modulo", "ha": 7.24, "x": 31.0, "y": 76.0}, {"id": "M03P01", "label": "M3/P1", "tipo": "modulo", "ha": 6.77, "x": 53.0, "y": 44.0}, {"id": "M03P02", "label": "M3/P2", "tipo": "modulo", "ha": 8.88, "x": 46.0, "y": 54.0}, {"id": "M03P03", "label": "M3/P3", "tipo": "modulo", "ha": 7.03, "x": 53.0, "y": 63.0}, {"id": "M03P04", "label": "M3/P4", "tipo": "modulo", "ha": 6.6, "x": 46.0, "y": 71.0}, {"id": "M03P05", "label": "M3/P5", "tipo": "modulo", "ha": 10.99, "x": 60.0, "y": 55.0}, {"id": "M04P01", "label": "M4/P1", "tipo": "modulo", "ha": 8.99, "x": 76.0, "y": 42.0}, {"id": "M04P02", "label": "M4/P2", "tipo": "modulo", "ha": 7.38, "x": 69.0, "y": 50.0}, {"id": "M04P03", "label": "M4/P3", "tipo": "modulo", "ha": 11.9, "x": 79.0, "y": 55.0}, {"id": "M04P04", "label": "M4/P4", "tipo": "modulo", "ha": 10.61, "x": 73.0, "y": 62.0}];
 var mlTalhoes = []; // talhoes do link sendo criado
+
+// Desenha o seletor de piquetes do mapa, agrupado por tipo/módulo
+function renderMapaSeletor() {
+  var el = document.getElementById('ml-mapa-sel');
+  if (!el) return;
+  var grupos = [
+    {titulo:'Pastos', filtro:function(p){return p.tipo==='pasto';}},
+    {titulo:'Módulo 1', filtro:function(p){return p.id.indexOf('M01')===0;}},
+    {titulo:'Módulo 2', filtro:function(p){return p.id.indexOf('M02')===0;}},
+    {titulo:'Módulo 3', filtro:function(p){return p.id.indexOf('M03')===0;}},
+    {titulo:'Módulo 4', filtro:function(p){return p.id.indexOf('M04')===0;}}
+  ];
+  var html = '<div style="font-size:11px;color:var(--ts);margin-bottom:6px">Escolha os piquetes do mapa (toque para adicionar):</div>';
+  grupos.forEach(function(g){
+    var itens = MAPA_PIQUETES.filter(g.filtro);
+    if (!itens.length) return;
+    html += '<div style="font-size:10.5px;font-weight:700;color:var(--vd);text-transform:uppercase;letter-spacing:.3px;margin:8px 0 4px">'+g.titulo+'</div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:5px">';
+    itens.forEach(function(p){
+      var sel = mlTalhoes.some(function(t){return t.nome===p.label;});
+      html += '<button type="button" onclick="togglePiquete(\''+p.id+'\')" '+
+        'style="border:1.5px solid '+(sel?'#2E7D32':'var(--cb)')+';background:'+(sel?'#2E7D32':'#fff')+';color:'+(sel?'#fff':'var(--vd)')+';border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;font-family:Roboto,sans-serif">'+
+        p.label+'</button>';
+    });
+    html += '</div>';
+  });
+  el.innerHTML = html;
+}
+
+// Adiciona ou remove um piquete do link ao tocar
+function togglePiquete(id) {
+  var p = MAPA_PIQUETES.filter(function(x){return x.id===id;})[0];
+  if (!p) return;
+  var idx = -1;
+  mlTalhoes.forEach(function(t,i){ if (t.nome===p.label) idx=i; });
+  if (idx >= 0) { mlTalhoes.splice(idx,1); }
+  else { mlTalhoes.push({nome:p.label, area:p.ha||0}); }
+  renderTalhoesMini();
+  renderMapaSeletor();
+}
+
 var mlDonoSel = ''; // dono do trator selecionado no link
 
 function adicionarTalhaoLink() {
@@ -1238,6 +1284,7 @@ function adicionarTalhaoLink() {
 function removerTalhaoLink(i) {
   mlTalhoes.splice(i, 1);
   renderTalhoesMini();
+  renderMapaSeletor();
 }
 
 function renderTalhoesMini() {
