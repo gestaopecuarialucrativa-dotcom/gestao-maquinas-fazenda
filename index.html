@@ -305,6 +305,7 @@ header{background:linear-gradient(135deg,#0D3318,#1A4C2A);height:64px;display:fl
   <div class="nav" onclick="goPage('fazendas',this)"><span class="nav-ico">🌾</span>Fazendas</div>
   <div class="nav" onclick="goPage('tratores',this)"><span class="nav-ico">🚜</span>Tratores</div>
   <div class="nav" onclick="goPage('links',this)"><span class="nav-ico">🔗</span>Links Tratorista</div>
+  <div class="nav" onclick="goPage('mapa',this)"><span class="nav-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg></span>Editar Mapa</div>
   <div class="s-lbl" style="margin-top:.8rem">Minhas Fazendas</div>
   <div class="faz-list" id="sb-fazendas"><div class="loading"><div class="spinner"></div>Carregando...</div></div>
 </aside>
@@ -347,6 +348,14 @@ header{background:linear-gradient(135deg,#0D3318,#1A4C2A);height:64px;display:fl
     <button class="btn btn-sec" onclick="abrirPdfFecha()">📄 PDF Recibo</button>
   </div>
   <div id="fecha-content"><div class="empty"><div class="empty-ico">🚜</div><div class="empty-title">Selecione uma fazenda</div></div></div>
+</div>
+
+<div class="page" id="page-mapa">
+  <div class="ph">
+    <div><div class="ph-title">Editar Mapa</div><div class="ph-sub">Arraste os pinos para ajustar a posição de cada piquete</div></div>
+    <button class="btn btn-prim" onclick="salvarMapa()">Salvar posições</button>
+  </div>
+  <div id="mapa-content"><div class="empty"><div class="empty-ico">🗺️</div><div class="empty-title">Selecione uma fazenda</div></div></div>
 </div>
 
 <div class="page" id="page-mensagens">
@@ -603,6 +612,7 @@ function goPage(id,el){
   if(id==='fazendas')renderFazendasPg();
   if(id==='tratores'){carregarTratores();}
   if(id==='links')renderLinksPage();
+  if(id==='mapa')carregarMapaEditor();
 }
 function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
@@ -650,7 +660,27 @@ async function selFaz(id){
   document.getElementById('dash-sub').textContent=fazAt.Pecuarista+(fazAt.Municipio?' · '+fazAt.Municipio:'')+(fazAt.Hectares_Total?' · '+fazAt.Hectares_Total+' ha':'');
   renderSB();renderDD();
   destroyCharts();
+  await carregarPiquetesAtivos();
   await loadResumo();
+}
+
+// Carrega as coordenadas salvas da fazenda (para o PDF). Se não houver, usa as padrão.
+async function carregarPiquetesAtivos(){
+  piquetesAtivos = null;
+  if(!fazAt) return;
+  try {
+    var r = await apiGet({action:'getPiquetes', fazenda_id: fazAt.ID});
+    if(r && r.ok && r.data && r.data.length){
+      piquetesAtivos = r.data.map(function(s){
+        return {id:s.Piquete_ID, label:s.Label, tipo:s.Tipo, ha:parseFloat(s.Ha)||0, x:parseFloat(s.X)||50, y:parseFloat(s.Y)||50};
+      });
+    }
+  } catch(e){}
+}
+
+// Retorna a lista de piquetes em uso: salvos (se houver) ou os padrão embutidos.
+function piquetesEmUso(){
+  return (piquetesAtivos && piquetesAtivos.length) ? piquetesAtivos : MAPA_PIQUETES;
 }
 
 async function loadResumo(){
@@ -1272,7 +1302,7 @@ function montarMapaPDF(lancamentos){
     if (ids.length){ ids.forEach(function(id){ feitosIds[id]=true; }); }
     else { foraMapa.push(l); }
   });
-  var comServico = MAPA_PIQUETES.filter(function(p){ return feitosIds[p.id]; });
+  var comServico = piquetesEmUso().filter(function(p){ return feitosIds[p.id]; });
   var nPins = comServico.length;
 
   var pinsHtml = '';
@@ -1299,6 +1329,102 @@ function montarMapaPDF(lancamentos){
     '</div>'+
     '<div style="font-size:10px;color:var(--ts);margin-top:6px"><strong>'+nPins+'</strong> piquete(s) com serviço de mecanização neste período.</div>'+
     aviso;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// EDITOR DE MAPA — arrastar pins e salvar coordenadas no backend
+// ════════════════════════════════════════════════════════════════════
+var mapaPiquetesEdit = []; // cópia de trabalho dos piquetes (id,label,tipo,ha,x,y)
+var piquetesAtivos = null;  // coordenadas em uso no PDF (salvas no backend ou padrão)
+
+async function carregarMapaEditor(){
+  var box = document.getElementById('mapa-content');
+  if(!fazAt){ box.innerHTML='<div class="empty"><div class="empty-ico">🗺️</div><div class="empty-title">Selecione uma fazenda</div></div>'; return; }
+  box.innerHTML='<div class="empty"><div class="empty-title">Carregando mapa…</div></div>';
+  // tenta carregar coordenadas salvas no backend
+  var salvos = [];
+  try {
+    var r = await apiGet({action:'getPiquetes', fazenda_id: fazAt.ID});
+    if(r && r.ok && r.data) salvos = r.data;
+  } catch(e){}
+  // monta a lista de trabalho: usa salvos se houver, senão as posições padrão do MAPA_PIQUETES
+  if(salvos.length){
+    mapaPiquetesEdit = salvos.map(function(s){
+      return {id:s.Piquete_ID, label:s.Label, tipo:s.Tipo, ha:parseFloat(s.Ha)||0, x:parseFloat(s.X)||50, y:parseFloat(s.Y)||50};
+    });
+  } else {
+    mapaPiquetesEdit = MAPA_PIQUETES.map(function(p){
+      return {id:p.id, label:p.label, tipo:p.tipo, ha:p.ha||0, x:p.x, y:p.y};
+    });
+  }
+  renderMapaEditor();
+}
+
+function renderMapaEditor(){
+  var box = document.getElementById('mapa-content');
+  var pins = mapaPiquetesEdit.map(function(p,i){
+    return '<div class="map-pin" data-i="'+i+'" style="position:absolute;left:'+p.x+'%;top:'+p.y+'%;transform:translate(-50%,-50%);cursor:grab;touch-action:none;z-index:5">'+
+      '<div style="background:#1B5E20;border:2px solid #fff;border-radius:14px;padding:3px 7px;box-shadow:0 2px 6px rgba(0,0,0,.5);font-size:10px;font-weight:800;color:#fff;white-space:nowrap;display:flex;align-items:center;gap:3px">'+
+        '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="17" r="2.5"/><circle cx="18" cy="17" r="2"/><path d="M3 17V8h7l2 4h2"/><path d="M10 8V5h3l3 4"/></svg>'+
+        p.label+'</div></div>';
+  }).join('');
+  box.innerHTML =
+    '<div style="background:#FFF8E1;border:1px solid #FFE082;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#7a5a00">Arraste cada pino até o piquete certo. Quando terminar, toque em <strong>Salvar posições</strong>.</div>'+
+    '<div id="map-edit-wrap" style="position:relative;width:100%;max-width:760px;border-radius:12px;overflow:hidden;border:2px solid var(--vc);user-select:none">'+
+      '<img src="'+MAPA_IMG+'" style="width:100%;display:block;pointer-events:none" alt="Mapa">'+
+      pins+
+    '</div>';
+  ativarArraste();
+}
+
+function ativarArraste(){
+  var wrap = document.getElementById('map-edit-wrap');
+  if(!wrap) return;
+  var pins = wrap.querySelectorAll('.map-pin');
+  pins.forEach(function(pin){
+    function start(ev){
+      ev.preventDefault();
+      var i = parseInt(pin.getAttribute('data-i'),10);
+      pin.style.cursor='grabbing';
+      function move(e){
+        var rect = wrap.getBoundingClientRect();
+        var cx = (e.touches?e.touches[0].clientX:e.clientX);
+        var cy = (e.touches?e.touches[0].clientY:e.clientY);
+        var x = Math.max(0, Math.min(100, (cx-rect.left)/rect.width*100));
+        var y = Math.max(0, Math.min(100, (cy-rect.top)/rect.height*100));
+        mapaPiquetesEdit[i].x = Math.round(x*10)/10;
+        mapaPiquetesEdit[i].y = Math.round(y*10)/10;
+        pin.style.left = mapaPiquetesEdit[i].x+'%';
+        pin.style.top  = mapaPiquetesEdit[i].y+'%';
+      }
+      function end(){
+        pin.style.cursor='grab';
+        document.removeEventListener('mousemove',move);
+        document.removeEventListener('mouseup',end);
+        document.removeEventListener('touchmove',move);
+        document.removeEventListener('touchend',end);
+      }
+      document.addEventListener('mousemove',move);
+      document.addEventListener('mouseup',end);
+      document.addEventListener('touchmove',move,{passive:false});
+      document.addEventListener('touchend',end);
+    }
+    pin.addEventListener('mousedown',start);
+    pin.addEventListener('touchstart',start,{passive:false});
+  });
+}
+
+async function salvarMapa(){
+  if(!fazAt){ showToast('⚠️ Selecione uma fazenda'); return; }
+  if(!mapaPiquetesEdit.length){ showToast('⚠️ Nada para salvar'); return; }
+  showToast('Salvando…');
+  var r = await apiPost({
+    action:'salvarPiquetes',
+    fazenda_id: fazAt.ID,
+    piquetes: JSON.stringify(mapaPiquetesEdit)
+  });
+  if(r && r.ok){ showToast('✅ ' + (r.msg||'Salvo!')); }
+  else { showToast('⚠️ ' + ((r&&r.erro)||'Erro ao salvar')); }
 }
 
 var mlTalhoes = []; // talhoes do link sendo criado
