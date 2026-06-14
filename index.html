@@ -1443,15 +1443,14 @@ async function carregarMapaEditor(){
       mapaImgURL = rc.data.Imagem_URL || rc.data.imagem_url || rc.data.url || null;
     }
   } catch(e){}
-  // monta a lista de trabalho: usa salvos se houver, senão as posições padrão do MAPA_PIQUETES
+  // usa SÓ os piquetes salvos desta fazenda; se não tiver nenhum, abre vazio
+  // (não puxa a lista de outra fazenda — cada fazenda tem os seus, vindos do salvo ou do import)
   if(salvos.length){
     mapaPiquetesEdit = dedupePiquetes(salvos.map(function(s){
       return {id:s.Piquete_ID, label:s.Label, tipo:s.Tipo, ha:parseFloat(s.Ha)||0, x:parseFloat(s.X)||50, y:parseFloat(s.Y)||50};
     }));
   } else {
-    mapaPiquetesEdit = MAPA_PIQUETES.map(function(p){
-      return {id:p.id, label:p.label, tipo:p.tipo, ha:p.ha||0, x:p.x, y:p.y};
-    });
+    mapaPiquetesEdit = [];
   }
   renderMapaEditor();
 }
