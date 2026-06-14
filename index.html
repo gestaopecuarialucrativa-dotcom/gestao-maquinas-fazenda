@@ -299,6 +299,7 @@ header{background:linear-gradient(135deg,#0D3318,#1A4C2A);height:64px;display:fl
   <div class="s-lbl">Menu</div>
   <div class="nav active" onclick="goPage('dashboard',this)"><span class="nav-ico">🏠</span>Dashboard</div>
   <div class="nav" onclick="goPage('lancamentos',this)"><span class="nav-ico">📝</span>Lançamentos</div>
+  <div class="nav" onclick="goPage('despesas',this)"><span class="nav-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><path d="M5 2v20l2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1Z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span>Despesas</div>
   <div class="nav" onclick="goPage('desempenho',this)"><span class="nav-ico">📈</span>Desempenho</div>
   <div class="nav" onclick="goPage('fechamento',this)"><span class="nav-ico">🚜</span>Fechamento Trator</div>
   <div class="nav" onclick="goPage('mensagens',this)"><span class="nav-ico">💬</span>Mensagens</div>
@@ -333,6 +334,13 @@ header{background:linear-gradient(135deg,#0D3318,#1A4C2A);height:64px;display:fl
     <button class="btn btn-prim" onclick="openLancModal(null)">+ Novo Lançamento</button>
   </div>
   <div id="lanc-table"><div class="empty"><div class="empty-ico">📝</div><div class="empty-title">Selecione uma fazenda</div></div></div>
+</div>
+
+<div class="page" id="page-despesas">
+  <div class="ph">
+    <div><div class="ph-title">Despesas</div><div class="ph-sub">Lance a despesa e o sistema sugere o centro de custo (você confere e corrige)</div></div>
+  </div>
+  <div id="despesas-content"></div>
 </div>
 
 <div class="page" id="page-desempenho">
@@ -626,7 +634,208 @@ function goPage(id,el){
   if(id==='tratores'){carregarTratores();}
   if(id==='links')renderLinksPage();
   if(id==='mapa')carregarMapaEditor();
+  if(id==='despesas')renderDespesas();
 }
+// ===== MÓDULO DESPESAS (sugestão de centro de custo) =====
+// De-para enxuto das despesas de máquina -> centro de custo (tabela Inttegra do Rogério).
+// "Horas de trabalho do trator" fica sem CC fixo: o sistema lembra a última escolha sua.
+var DESPESAS_CC = [
+  {d:'Horas de trabalho do trator', cc:''},
+  {d:'Óleo diesel', cc:'6.4.1 Combustíveis'},
+  {d:'Gasolina', cc:'6.4.1 Combustíveis'},
+  {d:'Arla', cc:'6.4.1 Combustíveis'},
+  {d:'Óleo motor', cc:'6.4.2 Manutenção e Conserto'},
+  {d:'Óleo hidráulico', cc:'6.4.2 Manutenção e Conserto'},
+  {d:'Lubrificantes / Graxa', cc:'6.4.2 Manutenção e Conserto'},
+  {d:'Filtros', cc:'6.4.2 Manutenção e Conserto'},
+  {d:'Pneus', cc:'6.4.2 Manutenção e Conserto'},
+  {d:'Peças - máquinas e veículos', cc:'6.4.2 Manutenção e Conserto'},
+  {d:'Oficina / Conserto', cc:'6.4.2 Manutenção e Conserto'},
+  {d:'Solda', cc:'6.4.2 Manutenção e Conserto'},
+  {d:'Frete de máquina', cc:'6.4.2 Manutenção e Conserto'},
+  {d:'Seguro / Licenciamento / Multa', cc:'6.4.3 Seguros, Impostos e Multas'},
+  {d:'Implementos', cc:'3.5.3 Implementos'},
+  {d:'Compra de trator / máquina', cc:'3.5.2 Máquinas'},
+  {d:'Manutenção de pastagem (com máquina)', cc:'5.3.3 Manutenção de Pastagem'},
+  {d:'Outras despesas de máquina', cc:'6.4.4 Outras Despesas com Parque de Máquinas'}
+];
+var CC_MAQUINA = [
+  '6.4.1 Combustíveis',
+  '6.4.2 Manutenção e Conserto',
+  '6.4.3 Seguros, Impostos e Multas',
+  '6.4.4 Outras Despesas com Parque de Máquinas',
+  '3.5.2 Máquinas',
+  '3.5.3 Implementos',
+  '5.3.3 Manutenção de Pastagem',
+  '6.2.4 Ferramentas e Equipamentos',
+  '6.2.2 Cercas'
+];
+var DESP_KW = [
+  ['diesel','Óleo diesel'],['s10','Óleo diesel'],['s-10','Óleo diesel'],
+  ['gasolina','Gasolina'],['arla','Arla'],
+  ['filtro','Filtros'],['pneu','Pneus'],
+  ['oficina','Oficina / Conserto'],['conserto','Oficina / Conserto'],['mecânic','Oficina / Conserto'],['mecanic','Oficina / Conserto'],
+  ['solda','Solda'],['lubrific','Lubrificantes / Graxa'],['graxa','Lubrificantes / Graxa'],
+  ['hidráulico','Óleo hidráulico'],['hidraulico','Óleo hidráulico'],
+  ['óleo','Óleo motor'],['oleo','Óleo motor'],
+  ['peça','Peças - máquinas e veículos'],['peca','Peças - máquinas e veículos'],
+  ['frete','Frete de máquina'],
+  ['seguro','Seguro / Licenciamento / Multa'],['licenc','Seguro / Licenciamento / Multa'],['multa','Seguro / Licenciamento / Multa'],['ipva','Seguro / Licenciamento / Multa'],
+  ['implemento','Implementos'],
+  ['hora','Horas de trabalho do trator'],
+  ['pastagem','Manutenção de pastagem (com máquina)'],['pasto','Manutenção de pastagem (com máquina)']
+];
+
+function nvVal(v){
+  v = String(v||'').trim();
+  if(!v) return 0;
+  if(v.indexOf(',')>=0){ v = v.replace(/\./g,'').replace(',','.'); }
+  return parseFloat(v)||0;
+}
+
+function ccSugerido(despesa){
+  var item = DESPESAS_CC.find(function(x){ return x.d===despesa; });
+  var fix = item ? item.cc : '';
+  if(fix) return fix;
+  try{ return localStorage.getItem('ccUlt:'+despesa) || ''; }catch(e){ return ''; }
+}
+
+function renderDespesas(){
+  var box = document.getElementById('despesas-content');
+  var hoje = new Date().toISOString().slice(0,10);
+  var optDesp = '<option value="">— selecione —</option>' + DESPESAS_CC.map(function(x){ return '<option value="'+x.d+'">'+x.d+'</option>'; }).join('');
+  var optCC = '<option value="">— selecione —</option>' + CC_MAQUINA.map(function(c){ return '<option value="'+c+'">'+c+'</option>'; }).join('');
+
+  box.innerHTML =
+    '<div class="card">'+
+      '<div class="card-head">Colar do WhatsApp <span style="font-weight:400;color:var(--ts);font-size:11px">(opcional)</span></div>'+
+      '<div style="padding:4px 2px 0">'+
+        '<textarea id="dx-wpp" placeholder="Cole o texto da mensagem (ou o texto copiado da foto da nota). Ex: Posto Ipiranga - 200L óleo diesel - R$ 1.480,00" style="width:100%;min-height:64px;border:1px solid var(--cb);border-radius:8px;padding:8px 10px;font-size:13px;font-family:Arial,Roboto,system-ui,sans-serif"></textarea>'+
+        '<button class="btn btn-sec" onclick="lerWhatsapp()" style="margin-top:6px">Ler texto e preencher</button>'+
+      '</div>'+
+    '</div>'+
+    '<div class="card" style="margin-top:12px">'+
+      '<div class="card-head">Dados da despesa</div>'+
+      '<div class="form-grid" style="padding:4px 2px 0">'+
+        '<div class="fg"><label>Data</label><input id="dx-data" type="date" value="'+hoje+'"></div>'+
+        '<div class="fg"><label>Fornecedor</label><input id="dx-forn" placeholder="Ex: Posto Ipiranga"></div>'+
+        '<div class="fg"><label>O que foi (produto/serviço) *</label><select id="dx-desp" onchange="selDespesa()">'+optDesp+'</select></div>'+
+        '<div class="fg"><label>Centro de custo (sugerido — você pode trocar)</label><select id="dx-cc">'+optCC+'</select></div>'+
+        '<div class="fg"><label>Valor (R$) *</label><input id="dx-valor" inputmode="decimal" placeholder="Ex: 1.480,00"></div>'+
+        '<div class="fg"><label>Dono do trator <span class="opt">(opcional)</span></label><input id="dx-dono" placeholder="Nome do proprietário"></div>'+
+        '<div class="fg"><label>Operador <span class="opt">(opcional)</span></label><input id="dx-oper" placeholder="Nome do operador"></div>'+
+        '<div class="fg full"><label>Observação <span class="opt">(opcional)</span></label><input id="dx-obs" placeholder="Detalhe, nº da nota, etc."></div>'+
+      '</div>'+
+      '<div style="display:flex;gap:8px;padding:10px 2px 2px">'+
+        '<button class="btn btn-prim" onclick="montarDespesa()" style="flex:1">Montar lançamento</button>'+
+        '<button class="btn btn-sec" onclick="renderDespesas()">Limpar</button>'+
+      '</div>'+
+    '</div>'+
+    '<div id="dx-result" style="margin-top:12px"></div>';
+}
+
+function selDespesa(){
+  var d = document.getElementById('dx-desp').value;
+  var cc = ccSugerido(d);
+  var sel = document.getElementById('dx-cc');
+  if(cc && CC_MAQUINA.indexOf(cc)<0){
+    sel.insertAdjacentHTML('afterbegin','<option value="'+cc+'">'+cc+'</option>');
+  }
+  sel.value = cc || '';
+}
+
+function acharValorTexto(t){
+  var m = t.match(/r\$\s*([\d.]+,\d{2})/i) || t.match(/([\d]{1,3}(?:\.\d{3})*,\d{2})/) || t.match(/(\d+,\d{2})/) || t.match(/r\$\s*(\d+)/i);
+  return m ? m[1] : '';
+}
+
+function lerWhatsapp(){
+  var t = (document.getElementById('dx-wpp').value||'');
+  if(!t.trim()){ showToast('⚠️ Cole o texto primeiro'); return; }
+  var low = t.toLowerCase();
+  var achouDesp = '';
+  for(var i=0;i<DESP_KW.length;i++){ if(low.indexOf(DESP_KW[i][0])>=0){ achouDesp = DESP_KW[i][1]; break; } }
+  if(achouDesp){
+    document.getElementById('dx-desp').value = achouDesp;
+    selDespesa();
+  }
+  var val = acharValorTexto(t);
+  if(val) document.getElementById('dx-valor').value = val;
+  if(achouDesp || val){ showToast('✅ Preenchi o que reconheci — confira e ajuste o que faltar'); }
+  else { showToast('Não reconheci automático — selecione a despesa na lista'); }
+}
+
+function montarDespesa(){
+  var d    = document.getElementById('dx-desp').value;
+  var cc   = document.getElementById('dx-cc').value;
+  var val  = nvVal(document.getElementById('dx-valor').value);
+  if(!d){ showToast('⚠️ Escolha o que foi a despesa'); return; }
+  if(!val){ showToast('⚠️ Informe o valor'); return; }
+  if(cc){ try{ localStorage.setItem('ccUlt:'+d, cc); }catch(e){} }
+
+  var data = document.getElementById('dx-data').value;
+  var dataBR = data ? data.split('-').reverse().join('/') : '';
+  var forn = (document.getElementById('dx-forn').value||'').trim();
+  var dono = (document.getElementById('dx-dono').value||'').trim();
+  var oper = (document.getElementById('dx-oper').value||'').trim();
+  var obs  = (document.getElementById('dx-obs').value||'').trim();
+  var faz  = fazAt ? fazAt.Nome_Fazenda : '';
+
+  function linha(lbl,v){ return v ? '<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--cb)"><span style="color:var(--ts)">'+lbl+'</span><span style="font-weight:700;text-align:right">'+v+'</span></div>' : ''; }
+
+  document.getElementById('dx-result').innerHTML =
+    '<div class="card" style="border-left:4px solid var(--vm)">'+
+      '<div class="card-head">Lançamento pronto</div>'+
+      '<div style="padding:2px 2px 0">'+
+        linha('Fazenda', faz)+
+        linha('Data', dataBR)+
+        linha('Fornecedor', forn)+
+        linha('Item', d)+
+        '<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--cb)"><span style="color:var(--ts)">Centro de custo</span><span style="font-weight:800;color:var(--vm);text-align:right">'+(cc||'(definir)')+'</span></div>'+
+        linha('Valor', fmtR(val))+
+        linha('Dono do trator', dono)+
+        linha('Operador', oper)+
+        linha('Observação', obs)+
+      '</div>'+
+      '<div style="display:flex;gap:8px;padding:12px 2px 2px">'+
+        '<button class="btn btn-prim" onclick="copiarDespesa()" style="flex:1">Copiar</button>'+
+        '<button class="btn btn-sec" onclick="enviarDespesaWpp()">WhatsApp</button>'+
+      '</div>'+
+    '</div>';
+
+  window._despesaTxt =
+    'DESPESA' + (faz?(' — '+faz):'') + '\n' +
+    (dataBR?('Data: '+dataBR+'\n'):'') +
+    (forn?('Fornecedor: '+forn+'\n'):'') +
+    'Item: '+d+'\n' +
+    'Centro de custo: '+(cc||'(definir)')+'\n' +
+    'Valor: '+fmtR(val)+'\n' +
+    (dono?('Dono do trator: '+dono+'\n'):'') +
+    (oper?('Operador: '+oper+'\n'):'') +
+    (obs?('Obs: '+obs+'\n'):'') +
+    '— Gestão Pecuária Lucrativa';
+
+  document.getElementById('dx-result').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function copiarDespesa(){
+  var t = window._despesaTxt||'';
+  if(!t) return;
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).then(function(){ showToast('✅ Copiado!'); }, function(){ showToast('⚠️ Não consegui copiar'); });
+  } else {
+    var ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); showToast('✅ Copiado!'); }catch(e){ showToast('⚠️ Não consegui copiar'); }
+    document.body.removeChild(ta);
+  }
+}
+
+function enviarDespesaWpp(){
+  var t = window._despesaTxt||'';
+  if(!t) return;
+  window.open('https://wa.me/?text='+encodeURIComponent(t), '_blank');
+}
+
 function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 function toggleDD(){document.getElementById('dd').classList.toggle('open');}
