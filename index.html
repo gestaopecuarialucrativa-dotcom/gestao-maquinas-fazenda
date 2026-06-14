@@ -1412,6 +1412,7 @@ function montarMapaPDF(lancamentos){
 // ════════════════════════════════════════════════════════════════════
 var mapaPiquetesEdit = []; // cópia de trabalho dos piquetes (id,label,tipo,ha,x,y)
 var piquetesAtivos = null;  // coordenadas em uso no PDF (salvas no backend ou padrão)
+var mapaImgURL = null;      // URL da imagem do mapa desta fazenda (Mapa_Config v12); null = usa a embutida
 
 // Remove piquetes repetidos vindos do backend: mantém a ÚLTIMA ocorrência de cada id
 // (a posição salva mais recente) e ordena na sequência do catálogo MAPA_PIQUETES.
@@ -1434,6 +1435,14 @@ async function carregarMapaEditor(){
     var r = await apiGet({action:'getPiquetes', fazenda_id: fazAt.ID});
     if(r && r.ok && r.data) salvos = r.data;
   } catch(e){}
+  // tenta carregar a imagem desta fazenda (Mapa_Config v12)
+  mapaImgURL = null;
+  try {
+    var rc = await apiGet({action:'getMapaConfig', fazenda_id: fazAt.ID});
+    if(rc && rc.ok && rc.data){
+      mapaImgURL = rc.data.Imagem_URL || rc.data.imagem_url || rc.data.url || null;
+    }
+  } catch(e){}
   // monta a lista de trabalho: usa salvos se houver, senão as posições padrão do MAPA_PIQUETES
   if(salvos.length){
     mapaPiquetesEdit = dedupePiquetes(salvos.map(function(s){
@@ -1447,21 +1456,126 @@ async function carregarMapaEditor(){
   renderMapaEditor();
 }
 
+// texto que aparece dentro de cada pino (label + área quando houver)
+function pinTexto(p){
+  var t = p.label || '';
+  if(p.ha && p.ha>0){ t += ' · ' + String(p.ha).replace('.',',') + ' ha'; }
+  return t;
+}
+
 function renderMapaEditor(){
   var box = document.getElementById('mapa-content');
+  var imgSrc = mapaImgURL || MAPA_IMG;
+  var temURL = !!mapaImgURL;
+
   var pins = mapaPiquetesEdit.map(function(p,i){
     return '<div class="map-pin" data-i="'+i+'" style="position:absolute;left:'+p.x+'%;top:'+p.y+'%;transform:translate(-50%,-50%);cursor:grab;touch-action:none;z-index:5">'+
-      '<div style="background:#1B5E20;border:2px solid #fff;border-radius:14px;padding:3px 7px;box-shadow:0 2px 6px rgba(0,0,0,.5);font-size:10px;font-weight:800;color:#fff;white-space:nowrap;display:flex;align-items:center;gap:3px">'+
+      '<div style="background:#1B5E20;border:2px solid #fff;border-radius:14px;padding:3px 7px;box-shadow:0 2px 6px rgba(0,0,0,.5);font-size:10px;font-weight:800;color:#fff;white-space:nowrap;display:flex;align-items:center;gap:4px">'+
         '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="17" r="2.5"/><circle cx="18" cy="17" r="2"/><path d="M3 17V8h7l2 4h2"/><path d="M10 8V5h3l3 4"/></svg>'+
-        p.label+'</div></div>';
+        '<span class="pin-text">'+pinTexto(p)+'</span>'+
+        '<span class="pin-del" onclick="excluirPiquete('+i+')" title="Excluir" style="margin-left:2px;background:rgba(255,255,255,.25);border-radius:50%;width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:11px;line-height:1">×</span>'+
+      '</div></div>';
   }).join('');
+
+  // bloco da imagem da fazenda
+  var blocoImg =
+    '<div style="background:var(--br);border:1.5px solid var(--cb);border-radius:10px;padding:10px 12px;margin-bottom:10px">'+
+      '<div style="font-size:11px;color:var(--ts);margin-bottom:5px">Link da imagem do mapa desta fazenda</div>'+
+      '<div style="display:flex;gap:6px">'+
+        '<input id="mapa-img-url" type="text" inputmode="url" value="'+(mapaImgURL?String(mapaImgURL).replace(/"/g,'&quot;'):'')+'" placeholder="cole aqui o link da imagem (GitHub)" '+
+          'style="flex:1;border:1.5px solid var(--cb);border-radius:8px;padding:8px 10px;font-size:12px;font-family:Arial,Roboto,system-ui,sans-serif">'+
+        '<button class="btn btn-sec" onclick="salvarMapaImagem()" style="padding:8px 12px;font-size:12px;white-space:nowrap">Salvar imagem</button>'+
+      '</div>'+
+      '<div style="font-size:10.5px;color:var(--ts);margin-top:5px">'+(temURL?'Usando a imagem desta fazenda.':'Sem link cadastrado — mostrando a imagem padrão até você salvar um link.')+'</div>'+
+    '</div>';
+
+  // botões de criar piquete
+  var blocoAdd =
+    '<div style="display:flex;gap:6px;margin-bottom:10px">'+
+      '<button class="btn btn-sec" onclick="addPiquete(\'pasto\')" style="flex:1;padding:9px;font-size:13px">+ Pasto</button>'+
+      '<button class="btn btn-sec" onclick="addPiquete(\'modulo\')" style="flex:1;padding:9px;font-size:13px">+ Módulo</button>'+
+    '</div>';
+
+  // lista editável de nome/área por piquete
+  var linhas = mapaPiquetesEdit.map(function(p,i){
+    var haVal = (p.ha && p.ha>0) ? String(p.ha).replace('.',',') : '';
+    return '<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px dashed var(--cb)">'+
+      '<input type="text" value="'+String(p.label||'').replace(/"/g,'&quot;')+'" oninput="setPiqLabel('+i+',this.value)" '+
+        'style="flex:1;min-width:0;border:1px solid var(--cb);border-radius:8px;padding:6px 8px;font-size:12px;font-family:Arial,Roboto,system-ui,sans-serif">'+
+      '<input type="text" inputmode="decimal" value="'+haVal+'" placeholder="ha" oninput="setPiqArea('+i+',this.value)" '+
+        'style="width:64px;border:1px solid var(--cb);border-radius:8px;padding:6px 8px;font-size:12px;text-align:right;font-family:Arial,Roboto,system-ui,sans-serif">'+
+      '<button onclick="excluirPiquete('+i+')" title="Excluir" style="border:none;background:transparent;color:var(--red);font-size:15px;font-weight:700;cursor:pointer;padding:0 4px">×</button>'+
+    '</div>';
+  }).join('');
+  var blocoLista =
+    '<div style="margin-top:12px">'+
+      '<div style="font-size:11px;color:var(--ts);margin-bottom:4px">Piquetes — ajuste o nome e a área (opcional):</div>'+
+      (linhas || '<div style="font-size:12px;color:var(--ts)">Nenhum piquete ainda. Use + Pasto / + Módulo.</div>')+
+    '</div>';
+
   box.innerHTML =
+    blocoImg +
+    blocoAdd +
     '<div style="background:#FFF8E1;border:1px solid #FFE082;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#7a5a00">Arraste cada pino até o piquete certo. Quando terminar, toque em <strong>Salvar posições</strong>.</div>'+
     '<div id="map-edit-wrap" style="position:relative;width:100%;max-width:760px;border-radius:12px;overflow:hidden;border:2px solid var(--vc);user-select:none">'+
-      '<img src="'+MAPA_IMG+'" style="width:100%;display:block;pointer-events:none" alt="Mapa">'+
+      '<img src="'+imgSrc+'" style="width:100%;display:block;pointer-events:none" alt="Mapa">'+
       pins+
-    '</div>';
+    '</div>'+
+    blocoLista;
   ativarArraste();
+}
+
+// atualiza o texto de um pino sem redesenhar tudo (mantém o foco dos inputs)
+function atualizarPinTexto(i){
+  var wrap = document.getElementById('map-edit-wrap');
+  if(!wrap) return;
+  var pin = wrap.querySelector('.map-pin[data-i="'+i+'"] .pin-text');
+  if(pin) pin.textContent = pinTexto(mapaPiquetesEdit[i]);
+}
+
+function setPiqLabel(i, v){
+  if(!mapaPiquetesEdit[i]) return;
+  mapaPiquetesEdit[i].label = v;
+  atualizarPinTexto(i);
+}
+
+function setPiqArea(i, v){
+  if(!mapaPiquetesEdit[i]) return;
+  var n = parseFloat(String(v).replace(',','.')) || 0;
+  mapaPiquetesEdit[i].ha = n;
+  atualizarPinTexto(i);
+}
+
+// próximo número livre de pasto (PA01, PA02, ...)
+function proxPastoNum(){
+  var max = 0;
+  function scan(p){ var m=/^PA0*(\d+)$/.exec(p.id||''); if(m){ var n=parseInt(m[1],10); if(n>max) max=n; } }
+  mapaPiquetesEdit.forEach(scan);
+  (typeof MAPA_PIQUETES!=='undefined'?MAPA_PIQUETES:[]).forEach(scan);
+  return max + 1;
+}
+
+function addPiquete(tipo){
+  var id, label;
+  if(tipo==='pasto'){
+    var n = proxPastoNum();
+    var nn = (n<10?'0':'') + n;
+    id = 'PA' + nn;
+    label = 'PA ' + nn;
+  } else {
+    id = 'MX' + Date.now().toString(36).toUpperCase();
+    label = 'Novo módulo';
+  }
+  mapaPiquetesEdit.push({id:id, label:label, tipo:tipo, ha:0, x:50, y:50});
+  renderMapaEditor();
+}
+
+function excluirPiquete(i){
+  if(!mapaPiquetesEdit[i]) return;
+  var nome = mapaPiquetesEdit[i].label || 'este piquete';
+  if(!confirm('Excluir "'+nome+'" do mapa?')) return;
+  mapaPiquetesEdit.splice(i,1);
+  renderMapaEditor();
 }
 
 function ativarArraste(){
@@ -1470,6 +1584,7 @@ function ativarArraste(){
   var pins = wrap.querySelectorAll('.map-pin');
   pins.forEach(function(pin){
     function start(ev){
+      if(ev.target && ev.target.closest && ev.target.closest('.pin-del')) return; // não arrasta ao tocar no ×
       ev.preventDefault();
       var i = parseInt(pin.getAttribute('data-i'),10);
       pin.style.cursor='grabbing';
@@ -1499,6 +1614,26 @@ function ativarArraste(){
     pin.addEventListener('mousedown',start);
     pin.addEventListener('touchstart',start,{passive:false});
   });
+}
+
+async function salvarMapaImagem(){
+  if(!fazAt){ showToast('⚠️ Selecione uma fazenda'); return; }
+  var campo = document.getElementById('mapa-img-url');
+  var url = campo ? (campo.value||'').trim() : '';
+  showToast('Salvando imagem…');
+  var r = await apiPost({
+    action:'salvarMapaConfig',
+    fazenda_id: fazAt.ID,
+    imagem_url: url,
+    Imagem_URL: url
+  });
+  if(r && r.ok){
+    mapaImgURL = url || null;
+    showToast('✅ Imagem salva!');
+    renderMapaEditor();
+  } else {
+    showToast('⚠️ ' + ((r&&r.erro)||'Erro ao salvar imagem'));
+  }
 }
 
 async function salvarMapa(){
