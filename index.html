@@ -1490,28 +1490,38 @@ function renderMapaEditor(){
       '<div style="font-size:10.5px;color:var(--ts);margin-top:5px">'+(temURL?'Usando a imagem desta fazenda.':'Esta fazenda ainda não tem mapa cadastrado.')+'</div>'+
     '</div>';
 
-  // botões de criar piquete
+  // botões de criar piquete + importar
   var blocoAdd =
+    '<button class="btn" onclick="document.getElementById(\'kml-file\').click()" style="width:100%;margin-bottom:8px;padding:10px;font-size:13px;display:flex;align-items:center;justify-content:center;gap:6px">'+
+      '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>'+
+      'Importar mapa (KML / KMZ)</button>'+
+    '<input type="file" id="kml-file" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz" style="display:none" onchange="importarMapaArquivo(this.files[0]); this.value=\'\';">'+
     '<div style="display:flex;gap:6px;margin-bottom:10px">'+
       '<button class="btn btn-sec" onclick="addPiquete(\'pasto\')" style="flex:1;padding:9px;font-size:13px">+ Pasto</button>'+
       '<button class="btn btn-sec" onclick="addPiquete(\'modulo\')" style="flex:1;padding:9px;font-size:13px">+ Módulo</button>'+
     '</div>';
 
-  // lista editável de nome/área por piquete
+  // lista editável de tipo/nome/área por piquete
+  function optTipo(v,sel){ return '<option value="'+v+'"'+(sel===v?' selected':'')+'>'+(v==='pasto'?'Pasto':v==='modulo'?'Módulo':'Indef.')+'</option>'; }
   var linhas = mapaPiquetesEdit.map(function(p,i){
     var haVal = (p.ha && p.ha>0) ? String(p.ha).replace('.',',') : '';
-    return '<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px dashed var(--cb)">'+
+    var t = p.tipo || 'indefinido';
+    return '<div style="display:flex;align-items:center;gap:5px;padding:5px 0;border-bottom:1px dashed var(--cb)">'+
+      '<select onchange="setPiqTipo('+i+',this.value)" style="border:1px solid var(--cb);border-radius:8px;padding:6px 4px;font-size:11px;background:#fff;font-family:Arial,Roboto,system-ui,sans-serif">'+
+        optTipo('pasto',t)+optTipo('modulo',t)+optTipo('indefinido',t)+
+      '</select>'+
       '<input type="text" value="'+String(p.label||'').replace(/"/g,'&quot;')+'" oninput="setPiqLabel('+i+',this.value)" '+
         'style="flex:1;min-width:0;border:1px solid var(--cb);border-radius:8px;padding:6px 8px;font-size:12px;font-family:Arial,Roboto,system-ui,sans-serif">'+
       '<input type="text" inputmode="decimal" value="'+haVal+'" placeholder="ha" oninput="setPiqArea('+i+',this.value)" '+
-        'style="width:64px;border:1px solid var(--cb);border-radius:8px;padding:6px 8px;font-size:12px;text-align:right;font-family:Arial,Roboto,system-ui,sans-serif">'+
+        'style="width:56px;border:1px solid var(--cb);border-radius:8px;padding:6px 6px;font-size:12px;text-align:right;font-family:Arial,Roboto,system-ui,sans-serif">'+
       '<button onclick="excluirPiquete('+i+')" title="Excluir" style="border:none;background:transparent;color:var(--red);font-size:15px;font-weight:700;cursor:pointer;padding:0 4px">×</button>'+
     '</div>';
   }).join('');
   var blocoLista =
     '<div style="margin-top:12px">'+
-      '<div style="font-size:11px;color:var(--ts);margin-bottom:4px">Piquetes — ajuste o nome e a área (opcional):</div>'+
-      (linhas || '<div style="font-size:12px;color:var(--ts)">Nenhum piquete ainda. Use + Pasto / + Módulo.</div>')+
+      '<div id="mapa-contagem" style="background:var(--mint);border-radius:8px;padding:7px 10px;margin-bottom:8px;font-size:12px;color:var(--vd)">'+textoContagem()+'</div>'+
+      '<div style="font-size:11px;color:var(--ts);margin-bottom:4px">Piquetes — ajuste o tipo, o nome e a área:</div>'+
+      (linhas || '<div style="font-size:12px;color:var(--ts)">Nenhum piquete ainda. Importe um KML/KMZ ou use + Pasto / + Módulo.</div>')+
     '</div>';
 
   // só desenha o mapa com pinos se ESTA fazenda tiver imagem cadastrada;
@@ -1598,6 +1608,147 @@ function excluirPiquete(i){
   if(!confirm('Excluir "'+nome+'" do mapa?')) return;
   mapaPiquetesEdit.splice(i,1);
   renderMapaEditor();
+}
+
+// ----- contagem por tipo -----
+function contarTipos(){
+  var c={pasto:0,modulo:0,indef:0,total:mapaPiquetesEdit.length};
+  mapaPiquetesEdit.forEach(function(p){
+    if(p.tipo==='pasto') c.pasto++;
+    else if(p.tipo==='modulo') c.modulo++;
+    else c.indef++;
+  });
+  return c;
+}
+function textoContagem(){
+  var c=contarTipos();
+  if(!c.total) return 'Nenhum piquete ainda.';
+  var t='<strong>'+c.pasto+'</strong> pasto'+(c.pasto===1?'':'s')+' · <strong>'+c.modulo+'</strong> módulo'+(c.modulo===1?'':'s');
+  if(c.indef) t+=' · <strong>'+c.indef+'</strong> indef.';
+  t+=' · <strong>'+c.total+'</strong> piquete'+(c.total===1?'':'s');
+  return t;
+}
+function atualizarContagem(){
+  var el=document.getElementById('mapa-contagem');
+  if(el) el.innerHTML=textoContagem();
+}
+function setPiqTipo(i,v){
+  if(!mapaPiquetesEdit[i]) return;
+  mapaPiquetesEdit[i].tipo=v;
+  atualizarContagem();
+}
+
+// ----- importação KML / KMZ -----
+// classifica pelo nome (melhor esforço); o usuário corrige na revisão
+function classificarTipo(nome){
+  var n=(nome||'').trim();
+  if(/^\s*pa\s*\d+/i.test(n) || /^\s*pasto/i.test(n) || /^\s*p\s*\d+\s*$/i.test(n)) return 'pasto';
+  if(/m\s*\d+\s*[\/\-_.]?\s*p\s*\d+/i.test(n) || /m[óo]dulo/i.test(n) || /\bmod\b/i.test(n)) return 'modulo';
+  return 'indefinido';
+}
+// área de um anel (lista de [lon,lat]) em hectares — fórmula geodésica esférica
+function areaAnelHa(coords){
+  if(!coords || coords.length<3) return 0;
+  var R=6378137, soma=0, n=coords.length;
+  for(var i=0;i<n;i++){
+    var j=(i+1)%n;
+    var lon1=coords[i][0]*Math.PI/180, lat1=coords[i][1]*Math.PI/180;
+    var lon2=coords[j][0]*Math.PI/180, lat2=coords[j][1]*Math.PI/180;
+    soma += (lon2-lon1)*(2+Math.sin(lat1)+Math.sin(lat2));
+  }
+  var m2=Math.abs(soma*R*R/2);
+  return m2/10000;
+}
+function parseCoords(txt){
+  var pts=[];
+  (txt||'').trim().split(/\s+/).forEach(function(tk){
+    if(!tk) return;
+    var a=tk.split(',');
+    var lon=parseFloat(a[0]), lat=parseFloat(a[1]);
+    if(isFinite(lon)&&isFinite(lat)) pts.push([lon,lat]);
+  });
+  return pts;
+}
+// lê o XML do KML e devolve [{nome,ha,tipo}]
+function parseKML(texto){
+  var doc;
+  try{ doc=new DOMParser().parseFromString(texto,'text/xml'); }catch(e){ return []; }
+  if(!doc || doc.getElementsByTagName('parsererror').length) return [];
+  var placemarks=doc.getElementsByTagName('Placemark');
+  var itens=[];
+  for(var p=0;p<placemarks.length;p++){
+    var pm=placemarks[p];
+    var nameEl=pm.getElementsByTagName('name')[0];
+    var nome=nameEl?nameEl.textContent.trim():('Piquete '+(p+1));
+    // soma a área dos contornos externos (cobre Polygon e MultiGeometry)
+    var ha=0, achou=false;
+    var outers=pm.getElementsByTagName('outerBoundaryIs');
+    if(outers.length){
+      for(var o=0;o<outers.length;o++){
+        var c=outers[o].getElementsByTagName('coordinates')[0];
+        if(c){ ha+=areaAnelHa(parseCoords(c.textContent)); achou=true; }
+      }
+    } else {
+      // fallback: qualquer LinearRing dentro do placemark
+      var rings=pm.getElementsByTagName('LinearRing');
+      for(var r=0;r<rings.length;r++){
+        var cc=rings[r].getElementsByTagName('coordinates')[0];
+        if(cc){ ha+=areaAnelHa(parseCoords(cc.textContent)); achou=true; }
+      }
+    }
+    if(!achou) continue; // sem polígono (ponto/linha) → ignora
+    itens.push({nome:nome, ha:Math.round(ha*100)/100, tipo:classificarTipo(nome)});
+  }
+  return itens;
+}
+// mescla por nome: atualiza área de quem já existe, adiciona os novos
+function mesclarImportados(itens){
+  var add=0, upd=0;
+  itens.forEach(function(it,k){
+    var idx=-1;
+    for(var j=0;j<mapaPiquetesEdit.length;j++){
+      if((mapaPiquetesEdit[j].label||'').trim().toLowerCase()===it.nome.toLowerCase()){ idx=j; break; }
+    }
+    if(idx>=0){ mapaPiquetesEdit[idx].ha=it.ha; if(mapaPiquetesEdit[idx].tipo==='indefinido') mapaPiquetesEdit[idx].tipo=it.tipo; upd++; }
+    else { mapaPiquetesEdit.push({id:'K'+Date.now().toString(36).toUpperCase()+k, label:it.nome, tipo:it.tipo, ha:it.ha, x:50, y:50}); add++; }
+  });
+  return {add:add, upd:upd};
+}
+function carregarJSZip(){
+  return new Promise(function(res,rej){
+    if(window.JSZip) return res(window.JSZip);
+    var s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+    s.onload=function(){ window.JSZip?res(window.JSZip):rej(new Error('JSZip não carregou')); };
+    s.onerror=function(){ rej(new Error('Não consegui carregar o leitor de KMZ (precisa de internet)')); };
+    document.head.appendChild(s);
+  });
+}
+async function importarMapaArquivo(file){
+  if(!file) return;
+  var nome=(file.name||'').toLowerCase();
+  showToast('Lendo arquivo…');
+  var texto='';
+  try{
+    if(nome.endsWith('.kmz')){
+      var JSZip=await carregarJSZip();
+      var buf=await file.arrayBuffer();
+      var zip=await JSZip.loadAsync(buf);
+      // acha o .kml dentro do zip (geralmente doc.kml)
+      var alvo=null;
+      zip.forEach(function(path,entry){ if(!alvo && /\.kml$/i.test(path) && !entry.dir) alvo=entry; });
+      if(!alvo){ showToast('⚠️ Não achei um .kml dentro do .kmz'); return; }
+      texto=await alvo.async('string');
+    } else {
+      texto=await file.text();
+    }
+  }catch(e){ showToast('⚠️ '+(e.message||'Erro ao abrir o arquivo')); return; }
+
+  var itens=parseKML(texto);
+  if(!itens.length){ showToast('⚠️ Nenhum piquete (polígono) encontrado no arquivo'); return; }
+  var r=mesclarImportados(itens);
+  renderMapaEditor();
+  showToast('✅ '+itens.length+' lido(s): '+r.add+' novo(s), '+r.upd+' atualizado(s). Revise e salve.');
 }
 
 function ativarArraste(){
