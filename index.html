@@ -1214,6 +1214,7 @@ async function abrirModalLink() {
   document.getElementById('btn-gerar-link').style.display = 'inline-flex';
   mlTalhoes = [];
   mlDonoSel = '';
+  mlPreSel = [];
   renderTalhoesMini();
   renderMapaSeletor();
   document.getElementById('ml-talhao-nome').value = '';
@@ -1234,16 +1235,44 @@ var MAPA_IMG = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST
 // normaliza nome de talhão/piquete para comparação tolerante
 function normTalhao(s){ return (s||'').toString().toUpperCase().replace(/[.\s]+/g,'').replace(/\//g,''); }
 
+// Tradutor: dado o nome lançado, devolve a lista de IDs de piquetes do mapa.
+// Cobre nomes novos (PA 06, M4/P1), pastos por número (Pasto 6 -> PA06),
+// módulos (MOD 04/01 -> M04P1) e correções manuais de lançamentos antigos.
+function resolverPiquetes(nome){
+  var n = normTalhao(nome); // ex: "PASTO9E10PARTIRDO8", "PA06", "MOD0401EMOD0402", "MOD04"
+  var ids = [];
+  // 1) match direto com id ou label de piquete (PA06, M04P1...)
+  MAPA_PIQUETES.forEach(function(p){
+    if (normTalhao(p.id)===n || normTalhao(p.label)===n) ids.push(p.id);
+  });
+  if (ids.length) return ids;
+  // 2) correções manuais de lançamentos antigos confirmadas pelo Rogério
+  var DEPARA = {
+    'PASTO9E10PARTIRDO8': ['PA09','PA10'],
+    'MOD0401EMOD0402':    ['M04P01','M04P02'],
+    'MOD04':              ['M04P04']
+  };
+  if (DEPARA[n]) return DEPARA[n].slice();
+  // 3) pastos por número: "PASTO6"/"PASTO07" -> PA06/PA07
+  var mp = n.match(/^PASTO0*(\d+)$/);
+  if (mp){ var pid='PA'+('0'+mp[1]).slice(-2); if (MAPA_PIQUETES.some(function(p){return p.id===pid;})) return [pid]; }
+  // 4) módulo único "MOD04P1" / "M04P1"
+  var mm = n.match(/^M0*(\d+)P0*(\d+)$/) || n.match(/^MOD0*(\d+)P0*(\d+)$/);
+  if (mm){ var mid='M0'+mm[1]+'P0'+mm[2]; if (MAPA_PIQUETES.some(function(p){return p.id===mid;})) return [mid]; }
+  return [];
+}
+
 // Monta o bloco do mapa com pins de trator nos piquetes que tiveram serviço
 function montarMapaPDF(lancamentos){
-  // nomes de talhão que tiveram serviço (normalizados)
-  var feitos = {};
-  (lancamentos||[]).forEach(function(l){ feitos[normTalhao(l.Talhao_Area)] = true; });
-  // piquetes do mapa que casam
-  var comServico = MAPA_PIQUETES.filter(function(p){ return feitos[normTalhao(p.label)]; });
-  // talhoes lançados que NÃO casaram com nenhum piquete
-  var labelsMapa = {}; MAPA_PIQUETES.forEach(function(p){ labelsMapa[normTalhao(p.label)] = true; });
-  var foraMapa = (lancamentos||[]).filter(function(l){ return !labelsMapa[normTalhao(l.Talhao_Area)]; });
+  // resolve cada lançamento em piquetes; acumula os que casaram e os que não
+  var feitosIds = {};
+  var foraMapa = [];
+  (lancamentos||[]).forEach(function(l){
+    var ids = resolverPiquetes(l.Talhao_Area);
+    if (ids.length){ ids.forEach(function(id){ feitosIds[id]=true; }); }
+    else { foraMapa.push(l); }
+  });
+  var comServico = MAPA_PIQUETES.filter(function(p){ return feitosIds[p.id]; });
   var nPins = comServico.length;
 
   var pinsHtml = '';
@@ -1273,6 +1302,7 @@ function montarMapaPDF(lancamentos){
 }
 
 var mlTalhoes = []; // talhoes do link sendo criado
+var mlPreSel = []; // piquetes pré-selecionados (ids) aguardando adicionar/agrupar
 
 // Desenha o seletor de piquetes do mapa, agrupado por tipo/módulo
 function renderMapaSeletor() {
@@ -1285,36 +1315,64 @@ function renderMapaSeletor() {
     {titulo:'Módulo 3', filtro:function(p){return p.id.indexOf('M03')===0;}},
     {titulo:'Módulo 4', filtro:function(p){return p.id.indexOf('M04')===0;}}
   ];
-  var html = '<div style="font-size:11px;color:var(--ts);margin-bottom:6px">Escolha os piquetes do mapa (toque para adicionar):</div>';
+  var html = '<div style="font-size:11px;color:var(--ts);margin-bottom:6px">Toque nos piquetes do mapa (eles ficam marcados); depois escolha adicionar separado ou agrupar:</div>';
   grupos.forEach(function(g){
     var itens = MAPA_PIQUETES.filter(g.filtro);
     if (!itens.length) return;
     html += '<div style="font-size:10.5px;font-weight:700;color:var(--vd);text-transform:uppercase;letter-spacing:.3px;margin:8px 0 4px">'+g.titulo+'</div>';
     html += '<div style="display:flex;flex-wrap:wrap;gap:5px">';
     itens.forEach(function(p){
-      var sel = mlTalhoes.some(function(t){return t.nome===p.label;});
+      var pre = mlPreSel.indexOf(p.id) >= 0;
+      var jaNaLista = mlTalhoes.some(function(t){return t.nome===p.label || (t.piquetes&&t.piquetes.indexOf(p.id)>=0);});
+      var bg = pre ? '#2E7D32' : (jaNaLista ? '#C8E6C9' : '#fff');
+      var cor = pre ? '#fff' : 'var(--vd)';
+      var bd = pre ? '#2E7D32' : 'var(--cb)';
       html += '<button type="button" onclick="togglePiquete(\''+p.id+'\')" '+
-        'style="border:1.5px solid '+(sel?'#2E7D32':'var(--cb)')+';background:'+(sel?'#2E7D32':'#fff')+';color:'+(sel?'#fff':'var(--vd)')+';border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;font-family:Roboto,sans-serif">'+
+        'style="border:1.5px solid '+bd+';background:'+bg+';color:'+cor+';border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;font-family:Roboto,sans-serif">'+
         p.label+'</button>';
     });
     html += '</div>';
   });
+  // barra de ação quando há pré-selecionados
+  if (mlPreSel.length) {
+    var labels = mlPreSel.map(function(id){ var p=MAPA_PIQUETES.filter(function(x){return x.id===id;})[0]; return p?p.label:id; });
+    html += '<div style="margin-top:10px;padding:10px;background:#F1F8E9;border-radius:10px">'+
+      '<div style="font-size:11px;color:var(--vd);font-weight:700;margin-bottom:8px">Selecionados: '+labels.join(', ')+'</div>'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
+        '<button type="button" onclick="adicionarPreSelSeparado()" style="flex:1;min-width:130px;border:none;background:#2E7D32;color:#fff;border-radius:8px;padding:8px;font-size:12px;font-weight:800;cursor:pointer">Adicionar separado</button>'+
+        '<button type="button" onclick="adicionarPreSelAgrupado()" style="flex:1;min-width:130px;border:1.5px solid #2E7D32;background:#fff;color:#2E7D32;border-radius:8px;padding:8px;font-size:12px;font-weight:800;cursor:pointer">Agrupar num só</button>'+
+        '<button type="button" onclick="limparPreSel()" style="border:none;background:transparent;color:var(--ts);font-size:11px;cursor:pointer;text-decoration:underline">limpar</button>'+
+      '</div></div>';
+  }
   el.innerHTML = html;
 }
 
-// Adiciona ou remove um piquete do link ao tocar
 function togglePiquete(id) {
-  var p = MAPA_PIQUETES.filter(function(x){return x.id===id;})[0];
-  if (!p) return;
-  var idx = -1;
-  mlTalhoes.forEach(function(t,i){ if (t.nome===p.label) idx=i; });
-  if (idx >= 0) { mlTalhoes.splice(idx,1); }
-  else { mlTalhoes.push({nome:p.label, area:p.ha||0}); }
-  renderTalhoesMini();
+  var i = mlPreSel.indexOf(id);
+  if (i >= 0) mlPreSel.splice(i,1);
+  else mlPreSel.push(id);
   renderMapaSeletor();
 }
-
-var mlDonoSel = ''; // dono do trator selecionado no link
+function adicionarPreSelSeparado() {
+  mlPreSel.forEach(function(id){
+    var p = MAPA_PIQUETES.filter(function(x){return x.id===id;})[0];
+    if (p && !mlTalhoes.some(function(t){return t.nome===p.label;})) {
+      mlTalhoes.push({nome:p.label, area:p.ha||0, piquetes:[p.id]});
+    }
+  });
+  limparPreSel(); renderTalhoesMini(); renderMapaSeletor();
+}
+function adicionarPreSelAgrupado() {
+  if (mlPreSel.length < 1) return;
+  var ps = mlPreSel.map(function(id){ return MAPA_PIQUETES.filter(function(x){return x.id===id;})[0]; }).filter(Boolean);
+  var nome = ps.map(function(p){return p.label;}).join(' + ');
+  var area = ps.reduce(function(s,p){ return s + (p.ha||0); }, 0);
+  if (!mlTalhoes.some(function(t){return t.nome===nome;})) {
+    mlTalhoes.push({nome:nome, area:area, piquetes:ps.map(function(p){return p.id;})});
+  }
+  limparPreSel(); renderTalhoesMini(); renderMapaSeletor();
+}
+function limparPreSel() { mlPreSel = []; renderMapaSeletor(); }
 
 function adicionarTalhaoLink() {
   var nome = document.getElementById('ml-talhao-nome').value.trim();
