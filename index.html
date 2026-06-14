@@ -1441,6 +1441,7 @@ async function carregarMapaEditor(){
     var rc = await apiGet({action:'getMapaConfig', fazenda_id: fazAt.ID});
     if(rc && rc.ok && rc.data){
       mapaImgURL = rc.data.Imagem_URL || rc.data.imagem_url || rc.data.url || null;
+      if(mapaImgURL) mapaImgURL = normalizarLinkGitHub(mapaImgURL);
     }
   } catch(e){}
   // usa SÓ os piquetes salvos desta fazenda; se não tiver nenhum, abre vazio
@@ -1467,13 +1468,11 @@ function renderMapaEditor(){
   var pins = mapaPiquetesEdit.map(function(p,i){
     var area = pinAreaTxt(p);
     return '<div class="map-pin" data-i="'+i+'" style="position:absolute;left:'+p.x+'%;top:'+p.y+'%;transform:translate(-50%,-50%);cursor:grab;touch-action:none;z-index:5">'+
-      '<div style="background:#1B5E20;border:2px solid #fff;border-radius:12px;padding:3px 6px;box-shadow:0 2px 6px rgba(0,0,0,.5);color:#fff;display:flex;flex-direction:column;align-items:center;gap:0;line-height:1.15">'+
-        '<div style="display:flex;align-items:center;gap:3px;white-space:nowrap">'+
-          '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="17" r="2.5"/><circle cx="18" cy="17" r="2"/><path d="M3 17V8h7l2 4h2"/><path d="M10 8V5h3l3 4"/></svg>'+
-          '<span class="pin-nome" style="font-size:10px;font-weight:800">'+(p.label||'')+'</span>'+
-          '<span class="pin-del" onclick="excluirPiquete('+i+')" title="Excluir" style="margin-left:2px;background:rgba(255,255,255,.25);border-radius:50%;width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:11px;line-height:1">×</span>'+
-        '</div>'+
-        '<span class="pin-area" style="font-size:9px;font-weight:600;opacity:.92;'+(area?'':'display:none')+'">'+area+'</span>'+
+      '<div style="position:relative;background:#1B5E20;border:2px solid #fff;border-radius:12px;padding:5px 8px;box-shadow:0 2px 6px rgba(0,0,0,.5);color:#fff;display:flex;flex-direction:column;align-items:center;gap:1px;line-height:1.15">'+
+        '<span class="pin-del" onclick="excluirPiquete('+i+')" title="Excluir" style="position:absolute;top:-7px;right:-7px;background:#1B5E20;border:1.5px solid #fff;border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:10px;line-height:1">×</span>'+
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="17" r="2.5"/><circle cx="18" cy="17" r="2"/><path d="M3 17V8h7l2 4h2"/><path d="M10 8V5h3l3 4"/></svg>'+
+        '<span class="pin-nome" style="font-size:10px;font-weight:800;white-space:nowrap">'+(p.label||'')+'</span>'+
+        '<span class="pin-area" style="font-size:9px;font-weight:600;opacity:.92;white-space:nowrap;'+(area?'':'display:none')+'">'+area+'</span>'+
       '</div></div>';
   }).join('');
 
@@ -1788,10 +1787,26 @@ function ativarArraste(){
   });
 }
 
+// converte link de página do GitHub (…/blob/…) no link direto da imagem (raw)
+function normalizarLinkGitHub(url){
+  var u = (url||'').trim();
+  if(!u) return u;
+  // github.com/user/repo/blob/branch/arquivo -> raw.githubusercontent.com/user/repo/branch/arquivo
+  if(/^https?:\/\/github\.com\//i.test(u) && /\/blob\//i.test(u)){
+    u = u.replace(/^https?:\/\/github\.com\//i, 'https://raw.githubusercontent.com/')
+         .replace(/\/blob\//i, '/');
+  }
+  // remove ?raw=true ou outros parâmetros que o GitHub às vezes adiciona
+  u = u.replace(/[?&]raw=true\b/i, '');
+  return u;
+}
+
 async function salvarMapaImagem(){
   if(!fazAt){ showToast('⚠️ Selecione uma fazenda'); return; }
   var campo = document.getElementById('mapa-img-url');
   var url = campo ? (campo.value||'').trim() : '';
+  url = normalizarLinkGitHub(url); // arruma link do GitHub sozinho
+  if(campo) campo.value = url;     // mostra já corrigido
   showToast('Salvando imagem…');
   var r = await apiPost({
     action:'salvarMapaConfig',
