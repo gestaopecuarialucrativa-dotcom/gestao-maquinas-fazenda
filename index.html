@@ -731,7 +731,54 @@ function renderDespesas(){
         '<button class="btn btn-sec" onclick="renderDespesas()">Limpar</button>'+
       '</div>'+
     '</div>'+
-    '<div id="dx-result" style="margin-top:12px"></div>';
+    '<div id="dx-result" style="margin-top:12px"></div>'+
+    '<div id="dx-lista" style="margin-top:12px"></div>';
+  carregarDespesas();
+}
+
+// salva a despesa montada na planilha (aba Despesas) via backend
+async function salvarDespesaApp(){
+  var o = window._despesaObj;
+  if(!o){ showToast('⚠️ Monte o lançamento primeiro'); return; }
+  if(!o.Fazenda_ID){ showToast('⚠️ Selecione uma fazenda'); return; }
+  showToast('Salvando despesa…');
+  var r = await apiPost({
+    action:'addDespesa',
+    Fazenda_ID:o.Fazenda_ID, Nome_Fazenda:o.Nome_Fazenda, Data:o.Data,
+    Fornecedor:o.Fornecedor, Despesa:o.Despesa, Centro_Custo:o.Centro_Custo,
+    Valor:o.Valor, Dono_Trator:o.Dono_Trator, Operador:o.Operador, Observacoes:o.Observacoes
+  });
+  if(r && r.ok){
+    showToast('✅ Despesa salva!');
+    document.getElementById('dx-result').innerHTML='';
+    renderDespesas();
+  } else {
+    showToast('⚠️ ' + ((r&&r.erro)||'Erro ao salvar'));
+  }
+}
+
+// carrega e mostra as despesas já lançadas desta fazenda
+async function carregarDespesas(){
+  var box = document.getElementById('dx-lista');
+  if(!box) return;
+  if(!fazAt){ box.innerHTML=''; return; }
+  var r;
+  try{ r = await apiGet({action:'getDespesas', fazenda_id: fazAt.ID}); }catch(e){ box.innerHTML=''; return; }
+  if(!r || !r.ok || !r.data || !r.data.length){ box.innerHTML=''; return; }
+  var total=0;
+  var linhas = r.data.map(function(d){
+    var v = parseFloat(d.Valor)||0; total+=v;
+    return '<div style="display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--cb)">'+
+      '<div style="min-width:0"><div style="font-weight:700;font-size:13px">'+(d.Despesa||'—')+'</div>'+
+        '<div style="font-size:11px;color:var(--ts)">'+(d.Data||'')+(d.Fornecedor?(' · '+d.Fornecedor):'')+' · '+(d.Centro_Custo||'')+'</div></div>'+
+      '<div style="font-weight:800;white-space:nowrap">'+fmtR(v)+'</div>'+
+    '</div>';
+  }).join('');
+  box.innerHTML =
+    '<div class="card">'+
+      '<div class="card-head" style="display:flex;justify-content:space-between"><span>Despesas lançadas</span><span style="color:var(--vm)">'+fmtR(total)+'</span></div>'+
+      '<div style="padding:2px 2px 0">'+linhas+'</div>'+
+    '</div>';
 }
 
 function selDespesa(){
@@ -797,11 +844,18 @@ function montarDespesa(){
         linha('Operador', oper)+
         linha('Observação', obs)+
       '</div>'+
-      '<div style="display:flex;gap:8px;padding:12px 2px 2px">'+
-        '<button class="btn btn-prim" onclick="copiarDespesa()" style="flex:1">Copiar</button>'+
-        '<button class="btn btn-sec" onclick="enviarDespesaWpp()">WhatsApp</button>'+
+      '<div style="display:flex;gap:8px;padding:12px 2px 2px;flex-wrap:wrap">'+
+        '<button class="btn btn-prim" onclick="salvarDespesaApp()" style="flex:1 1 100%">Salvar despesa</button>'+
+        '<button class="btn btn-sec" onclick="copiarDespesa()" style="flex:1">Copiar</button>'+
+        '<button class="btn btn-sec" onclick="enviarDespesaWpp()" style="flex:1">WhatsApp</button>'+
       '</div>'+
     '</div>';
+
+  window._despesaObj = {
+    Fazenda_ID: fazAt ? fazAt.ID : '', Nome_Fazenda: faz, Data: dataBR,
+    Fornecedor: forn, Despesa: d, Centro_Custo: cc, Valor: val,
+    Dono_Trator: dono, Operador: oper, Observacoes: obs
+  };
 
   window._despesaTxt =
     'DESPESA' + (faz?(' — '+faz):'') + '\n' +
