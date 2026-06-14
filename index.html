@@ -671,9 +671,9 @@ async function carregarPiquetesAtivos(){
   try {
     var r = await apiGet({action:'getPiquetes', fazenda_id: fazAt.ID});
     if(r && r.ok && r.data && r.data.length){
-      piquetesAtivos = r.data.map(function(s){
+      piquetesAtivos = dedupePiquetes(r.data.map(function(s){
         return {id:s.Piquete_ID, label:s.Label, tipo:s.Tipo, ha:parseFloat(s.Ha)||0, x:parseFloat(s.X)||50, y:parseFloat(s.Y)||50};
-      });
+      }));
     }
   } catch(e){}
 }
@@ -1337,6 +1337,17 @@ function montarMapaPDF(lancamentos){
 var mapaPiquetesEdit = []; // cópia de trabalho dos piquetes (id,label,tipo,ha,x,y)
 var piquetesAtivos = null;  // coordenadas em uso no PDF (salvas no backend ou padrão)
 
+// Remove piquetes repetidos vindos do backend: mantém a ÚLTIMA ocorrência de cada id
+// (a posição salva mais recente) e ordena na sequência do catálogo MAPA_PIQUETES.
+function dedupePiquetes(lista){
+  var ult = {};
+  (lista||[]).forEach(function(p){ if(p && p.id) ult[p.id] = p; });
+  var ordem = MAPA_PIQUETES.map(function(c){ return c.id; });
+  var fora = Object.keys(ult).filter(function(id){ return ordem.indexOf(id)<0; });
+  var ids = ordem.filter(function(id){ return ult[id]; }).concat(fora);
+  return ids.map(function(id){ return ult[id]; });
+}
+
 async function carregarMapaEditor(){
   var box = document.getElementById('mapa-content');
   if(!fazAt){ box.innerHTML='<div class="empty"><div class="empty-ico">🗺️</div><div class="empty-title">Selecione uma fazenda</div></div>'; return; }
@@ -1349,9 +1360,9 @@ async function carregarMapaEditor(){
   } catch(e){}
   // monta a lista de trabalho: usa salvos se houver, senão as posições padrão do MAPA_PIQUETES
   if(salvos.length){
-    mapaPiquetesEdit = salvos.map(function(s){
+    mapaPiquetesEdit = dedupePiquetes(salvos.map(function(s){
       return {id:s.Piquete_ID, label:s.Label, tipo:s.Tipo, ha:parseFloat(s.Ha)||0, x:parseFloat(s.X)||50, y:parseFloat(s.Y)||50};
-    });
+    }));
   } else {
     mapaPiquetesEdit = MAPA_PIQUETES.map(function(p){
       return {id:p.id, label:p.label, tipo:p.tipo, ha:p.ha||0, x:p.x, y:p.y};
