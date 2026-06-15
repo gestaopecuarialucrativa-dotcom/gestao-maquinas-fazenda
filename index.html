@@ -732,8 +732,127 @@ function renderDespesas(){
       '</div>'+
     '</div>'+
     '<div id="dx-result" style="margin-top:12px"></div>'+
+    '<div id="dx-lancs" style="margin-top:12px"></div>'+
     '<div id="dx-lista" style="margin-top:12px"></div>';
   carregarDespesas();
+  renderLancsDespesa();
+}
+
+// sugestão de centro de custo para tarefas de trator (você confirma/troca; lembra a última)
+var TAREFA_CC = {
+  'Eliminação de talos':'5.3.3 Manutenção de Pastagem',
+  'Roçagem':'5.3.3 Manutenção de Pastagem',
+  'Pulverização':'5.3.3 Manutenção de Pastagem',
+  'Gradeação':'5.3.3 Manutenção de Pastagem',
+  'Plantio':'5.3.3 Manutenção de Pastagem',
+  'Subsolagem':'5.3.3 Manutenção de Pastagem'
+};
+// centros de custo comuns para trabalho de trator (no select; dá pra ampliar)
+var CC_TRATOR = [
+  '5.3.3 Manutenção de Pastagem',
+  '3.2 Investimentos em Infraestrutura',
+  '6.2.2 Cercas',
+  '6.2.3 Estradas e Pontes',
+  '6.4.4 Outras Despesas com Parque de Máquinas',
+  '6.6.1 Outras Despesas'
+];
+
+function ccSugeridoLanc(l){
+  if(l.Centro_Custo) return l.Centro_Custo;           // já salvo antes
+  var tar = l.Tarefa || '';
+  try{ var ult = localStorage.getItem('ccTarefa:'+tar); if(ult) return ult; }catch(e){}
+  return TAREFA_CC[tar] || '';                         // palpite pela tarefa
+}
+
+function renderLancsDespesa(){
+  var box = document.getElementById('dx-lancs');
+  if(!box) return;
+  var lancs = (resumo && resumo.lancamentos) ? resumo.lancamentos : [];
+  if(!lancs.length){ box.innerHTML=''; return; }
+
+  var linhas = lancs.map(function(l){
+    var cc = ccSugeridoLanc(l);
+    var ccNaLista = CC_TRATOR.indexOf(cc) >= 0;
+    var opts = '<option value="">a confirmar…</option>' +
+      (cc && !ccNaLista ? '<option value="'+cc+'" selected>'+cc+'</option>' : '') +
+      CC_TRATOR.map(function(c){ return '<option value="'+c+'"'+(c===cc?' selected':'')+'>'+c+'</option>'; }).join('');
+    var pago = String(l.Status_Pagamento)==='Pago';
+    var lancado = String(l.Lancado_Inttegra||'')==='Sim';
+    var seloPag = pago
+      ? '<span style="font-size:10px;background:var(--mint);color:var(--vm);padding:2px 8px;border-radius:20px">Pago</span>'
+      : '<span style="font-size:10px;background:#FFF3E0;color:#8A5300;padding:2px 8px;border-radius:20px">A pagar</span>';
+    var seloLanc = lancado
+      ? '<span onclick="toggleLancado(\''+l.ID+'\',true)" style="cursor:pointer;font-size:10px;background:var(--mint);color:var(--vm);padding:3px 9px;border-radius:20px;white-space:nowrap">✓ lancei</span>'
+      : '<span onclick="toggleLancado(\''+l.ID+'\',false)" style="cursor:pointer;font-size:10px;background:#FFF3E0;color:#8A5300;padding:3px 9px;border-radius:20px;white-space:nowrap">falta lançar</span>';
+    var tar = l.Tarefa ? (' · '+l.Tarefa) : '';
+    return '<div style="background:#fff;border:1px solid var(--cb);border-radius:10px;padding:9px 11px;margin-bottom:7px"'+(lancado?' data-l="ok"':'')+'>'+
+      '<div style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px">'+
+        '<span style="font-weight:700;min-width:0">'+formatDate(l.Data)+' · '+(l.Talhao_Area||'—')+tar+'</span>'+
+        '<span style="font-weight:800;white-space:nowrap">'+fmtR(parseFloat(l.Custo_Total)||0)+'</span>'+
+      '</div>'+
+      '<div style="display:flex;gap:6px;align-items:center;margin-top:7px;flex-wrap:wrap">'+
+        seloPag+
+        '<select onchange="setLancCCFront(\''+l.ID+'\',\''+String(l.Tarefa||'').replace(/'/g,"\\'")+'\',this.value)" '+
+          'style="flex:1;min-width:150px;border:1px solid var(--cb);border-radius:8px;padding:6px 8px;font-size:11.5px;background:#fff;font-family:Arial,Roboto,system-ui,sans-serif">'+opts+'</select>'+
+        seloLanc+
+        '<button class="btn btn-sec" onclick="copiarLanc(\''+l.ID+'\')" style="padding:5px 10px;font-size:11px">Copiar</button>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+
+  box.innerHTML =
+    '<div class="card">'+
+      '<div class="card-head">Horas de trator (dos Lançamentos)</div>'+
+      '<div style="font-size:11px;color:var(--ts);margin:2px 2px 8px">Confira o centro de custo de cada serviço e marque o que já lançou na Inttegra.</div>'+
+      '<div style="padding:0 2px">'+linhas+'</div>'+
+    '</div>';
+}
+
+async function setLancCCFront(id, tarefa, cc){
+  // lembra a última escolha para essa tarefa
+  if(cc && tarefa){ try{ localStorage.setItem('ccTarefa:'+tarefa, cc); }catch(e){} }
+  // atualiza o modelo local pra não perder ao re-renderizar
+  if(resumo && resumo.lancamentos){
+    var l = resumo.lancamentos.find(function(x){return String(x.ID)===String(id);});
+    if(l) l.Centro_Custo = cc;
+  }
+  var r = await apiPost({action:'setLancCC', id:id, Centro_Custo:cc});
+  showToast(r&&r.ok ? '✅ Centro de custo salvo' : '⚠️ '+((r&&r.erro)||'Erro'));
+}
+
+async function toggleLancado(id, estaLancado){
+  var novo = estaLancado ? '' : 'Sim';
+  if(resumo && resumo.lancamentos){
+    var l = resumo.lancamentos.find(function(x){return String(x.ID)===String(id);});
+    if(l) l.Lancado_Inttegra = novo;
+  }
+  renderLancsDespesa();
+  var r = await apiPost({action:'setLancInttegra', id:id, Lancado_Inttegra:novo});
+  showToast(r&&r.ok ? (novo?'✅ Marcado como lançado':'Desmarcado') : '⚠️ '+((r&&r.erro)||'Erro'));
+}
+
+function copiarLanc(id){
+  var l = (resumo&&resumo.lancamentos||[]).find(function(x){return String(x.ID)===String(id);});
+  if(!l) return;
+  var faz = fazAt ? fazAt.Nome_Fazenda : '';
+  var cc = ccSugeridoLanc(l);
+  var t =
+    'DESPESA' + (faz?(' — '+faz):'') + '\n' +
+    'Data: '+formatDate(l.Data)+'\n' +
+    'Item: Horas de trator'+(l.Tarefa?(' ('+l.Tarefa+')'):'')+'\n' +
+    'Talhão: '+(l.Talhao_Area||'')+'\n' +
+    'Centro de custo: '+(cc||'(definir)')+'\n' +
+    'Valor: '+fmtR(parseFloat(l.Custo_Total)||0)+'\n' +
+    (l.Dono_Trator?('Dono do trator: '+l.Dono_Trator+'\n'):'') +
+    (l.Tratorista?('Operador: '+l.Tratorista+'\n'):'') +
+    '— Gestão Pecuária Lucrativa';
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).then(function(){ showToast('✅ Copiado!'); }, function(){ showToast('⚠️ Não consegui copiar'); });
+  } else {
+    var ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); showToast('✅ Copiado!'); }catch(e){ showToast('⚠️ Não consegui copiar'); }
+    document.body.removeChild(ta);
+  }
 }
 
 // salva a despesa montada na planilha (aba Despesas) via backend
